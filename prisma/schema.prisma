@@ -1,0 +1,292 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum RoleName {
+  Admin
+  Organizer
+  Participant
+}
+
+enum UserStatus {
+  Active
+  Inactive
+}
+
+enum RoomStatus {
+  Available
+  Maintenance
+}
+
+enum MeetingStatus {
+  Scheduled
+  In_progress
+  Completed
+  Cancelled
+}
+
+enum ParticipantStatus {
+  Pending
+  Accepted
+  Declined
+  Tentative
+}
+
+enum EquipmentStatus {
+  Available
+  Booked
+  Maintenance
+}
+
+enum NotificationType {
+  Invite
+  Update
+  Cancel
+  Reminder
+}
+
+enum NotificationChannel {
+  Email
+}
+
+enum NotificationStatus {
+  Sent
+  Failed
+}
+
+enum ReminderStatus {
+  Pending
+  Sent
+  Failed
+  Cancelled
+}
+
+// -------------------------------------------------------------
+// CORE & MASTER ENTITIES
+// -------------------------------------------------------------
+
+model Department {
+  department_id   Int     @id @default(autoincrement())
+  department_name String  @db.VarChar(100)
+  hrm_code        String? @db.VarChar(50)
+
+  users           User[]
+
+  @@map("DEPARTMENT")
+}
+
+model Role {
+  role_id   Int      @id @default(autoincrement())
+  role_name RoleName @unique
+
+  users             User[]
+  room_restrictions RoomRestriction[]
+
+  @@map("ROLE")
+}
+
+model User {
+  user_id        Int        @id @default(autoincrement())
+  role_id        Int
+  department_id  Int?
+  full_name      String     @db.VarChar(150)
+  email          String     @unique @db.VarChar(150)
+  password_hash  String?    @db.VarChar(255)
+  phone          String?    @db.VarChar(30)
+  status         UserStatus @default(Active)
+
+  role           Role        @relation(fields: [role_id], references: [role_id])
+  department     Department? @relation(fields: [department_id], references: [department_id])
+
+  organized_meetings   Meeting[]            @relation("MeetingOrganizer")
+  meeting_participants MeetingParticipant[]
+  notification_logs    NotificationLog[]
+  attachments_uploaded MeetingAttachment[]  @relation("UploadedByUser")
+  meeting_reminders    MeetingReminder[]
+  check_in_logs        CheckInLog[]
+
+  @@index([role_id])
+  @@index([status])
+  @@map("USER")
+}
+
+model Room {
+  room_id   Int        @id @default(autoincrement())
+  room_name String     @db.VarChar(100)
+  capacity  Int
+  location  String?    @db.VarChar(200)
+  status    RoomStatus @default(Available)
+
+  meetings          Meeting[]
+  room_restrictions RoomRestriction[]
+  equipments        Equipment[]
+
+  @@map("ROOM")
+}
+
+model RoomRestriction {
+  restriction_id Int     @id @default(autoincrement())
+  room_id        Int
+  role_id        Int
+  notes          String? @db.Text
+
+  room           Room    @relation(fields: [room_id], references: [room_id], onDelete: Cascade)
+  role           Role    @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+
+  @@map("ROOM_RESTRICTION")
+}
+
+// -------------------------------------------------------------
+// MEETING & PARTICIPANT ENTITIES
+// -------------------------------------------------------------
+
+model Meeting {
+  meeting_id              Int           @id @default(autoincrement())
+  organizer_id            Int
+  room_id                 Int?
+  title                   String        @db.VarChar(200)
+  description             String?       @db.Text
+  meeting_link            String?       @db.Text
+  start_time              DateTime      @db.Timestamptz(6)
+  end_time                DateTime      @db.Timestamptz(6)
+  reminder_minutes_before Int           @default(15)
+  status                  MeetingStatus @default(Scheduled)
+  created_at              DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime      @updatedAt @db.Timestamptz(6)
+  cancelled_at            DateTime?     @db.Timestamptz(6)
+  is_recurring            Boolean       @default(false)
+  recurrence_rule         String?       @db.Text
+
+  organizer          User                 @relation("MeetingOrganizer", fields: [organizer_id], references: [user_id])
+  room               Room?                @relation(fields: [room_id], references: [room_id], onDelete: SetNull)
+
+  participants       MeetingParticipant[]
+  notification_logs  NotificationLog[]
+  attachments        MeetingAttachment[]
+  reminders          MeetingReminder[]
+  meeting_equipments MeetingEquipment[]
+  check_in_logs      CheckInLog[]
+
+  @@index([room_id, start_time, end_time, status])
+  @@index([start_time, end_time, organizer_id])
+  @@map("MEETING")
+}
+
+model MeetingParticipant {
+  participant_id        Int               @id @default(autoincrement())
+  meeting_id            Int
+  user_id               Int
+  status                ParticipantStatus @default(Pending)
+  rsvp_token_hash       String?           @unique @db.VarChar(255)
+  rsvp_token_expires_at DateTime?         @db.Timestamptz(6)
+
+  meeting               Meeting           @relation(fields: [meeting_id], references: [meeting_id], onDelete: Cascade)
+  user                  User              @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([meeting_id, user_id])
+  @@index([user_id, status])
+  @@map("MEETING_PARTICIPANT")
+}
+
+model MeetingAttachment {
+  attachment_id Int      @id @default(autoincrement())
+  meeting_id    Int
+  uploaded_by   Int
+  file_name     String   @db.VarChar(255)
+  mime_type     String   @db.VarChar(100)
+  size_bytes    BigInt
+  storage_key   String   @unique @db.VarChar(255)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  meeting       Meeting  @relation(fields: [meeting_id], references: [meeting_id], onDelete: Cascade)
+  uploader      User     @relation("UploadedByUser", fields: [uploaded_by], references: [user_id])
+
+  @@index([meeting_id])
+  @@map("MEETING_ATTACHMENT")
+}
+
+model MeetingReminder {
+  reminder_id       Int            @id @default(autoincrement())
+  meeting_id        Int
+  recipient_user_id Int
+  scheduled_at      DateTime       @db.Timestamptz(6)
+  status            ReminderStatus @default(Pending)
+  sent_at           DateTime?      @db.Timestamptz(6)
+  error_message     String?        @db.Text
+
+  meeting           Meeting        @relation(fields: [meeting_id], references: [meeting_id], onDelete: Cascade)
+  recipient         User           @relation(fields: [recipient_user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([meeting_id, recipient_user_id])
+  @@index([status, scheduled_at])
+  @@map("MEETING_REMINDER")
+}
+
+model NotificationLog {
+  log_id            Int                 @id @default(autoincrement())
+  meeting_id        Int
+  recipient_user_id Int
+  type              NotificationType    @default(Invite)
+  channel           NotificationChannel @default(Email)
+  status            NotificationStatus
+  sent_at           DateTime?           @db.Timestamptz(6)
+  error_message     String?             @db.Text
+
+  meeting           Meeting             @relation(fields: [meeting_id], references: [meeting_id], onDelete: Cascade)
+  recipient         User                @relation(fields: [recipient_user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([meeting_id, recipient_user_id])
+  @@map("NOTIFICATION_LOG")
+}
+
+// -------------------------------------------------------------
+// EXTENDED & FUTURE PHASE ENTITIES
+// -------------------------------------------------------------
+
+model Equipment {
+  equipment_id   Int             @id @default(autoincrement())
+  room_id        Int?
+  equipment_name String          @db.VarChar(100)
+  type           String          @db.VarChar(50)
+  status         EquipmentStatus @default(Available)
+
+  room               Room?              @relation(fields: [room_id], references: [room_id], onDelete: SetNull)
+  meeting_equipments MeetingEquipment[]
+
+  @@map("EQUIPMENT")
+}
+
+model MeetingEquipment {
+  meeting_id   Int
+  equipment_id Int
+  quantity     Int @default(1)
+
+  meeting      Meeting   @relation(fields: [meeting_id], references: [meeting_id], onDelete: Cascade)
+  equipment    Equipment @relation(fields: [equipment_id], references: [equipment_id], onDelete: Cascade)
+
+  @@id([meeting_id, equipment_id])
+  @@map("MEETING_EQUIPMENT")
+}
+
+model CheckInLog {
+  log_id         Int       @id @default(autoincrement())
+  meeting_id     Int
+  user_id        Int
+  check_in_time  DateTime? @db.Timestamptz(6)
+  check_out_time DateTime? @db.Timestamptz(6)
+  qr_code_data   String?   @db.Text
+
+  meeting        Meeting   @relation(fields: [meeting_id], references: [meeting_id], onDelete: Cascade)
+  user           User      @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@map("CHECK_IN_LOG")
+}

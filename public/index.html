@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MeetFlow — Quản lý Lịch họp Doanh nghiệp Thông minh</title>
+  <meta name="description" content="Hệ thống quản lý lịch họp doanh nghiệp thông minh: kiểm tra xung đột thời gian thực, tự động đề xuất khung giờ trống, đính kèm tài liệu và nhắc lịch tự động.">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
+</head>
+<body>
+  <div id="app-container">
+    <!-- Top Header Navigation -->
+    <header class="app-header">
+      <div class="brand-section">
+        <div class="brand-logo">MF</div>
+        <div>
+          <h1 class="brand-title">
+            MeetFlow
+            <span class="brand-badge">MVP V1</span>
+          </h1>
+          <div class="brand-subtitle">Hệ thống Quản lý Lịch họp Doanh nghiệp</div>
+        </div>
+      </div>
+
+      <!-- View Switcher Tabs -->
+      <div class="header-center">
+        <nav class="view-switcher" aria-label="Lựa chọn chế độ xem">
+          <button class="view-btn active" id="view-tab-month" data-view="month">Tháng</button>
+          <button class="view-btn" id="view-tab-week" data-view="week">Tuần</button>
+          <button class="view-btn" id="view-tab-list" data-view="list">Danh sách</button>
+          <button class="view-btn" id="view-tab-rooms" data-view="rooms">Phòng họp</button>
+        </nav>
+      </div>
+
+      <!-- Header Action Controls -->
+      <div class="header-actions">
+        <!-- Theme Toggle -->
+        <button class="icon-btn" id="btn-toggle-theme" title="Chuyển chế độ Sáng / Tối" aria-label="Chuyển đổi giao diện">
+          <span id="theme-icon">🌙</span>
+        </button>
+
+        <!-- Create Meeting CTA Button (AC1) -->
+        <button class="btn-primary" id="btn-open-create-meeting" aria-label="Tạo cuộc họp mới">
+          <span>+</span>
+          <span>Tạo lịch họp mới</span>
+        </button>
+
+        <!-- Current User Profile / Login -->
+        <div id="auth-section">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+    </header>
+
+    <!-- Workspace Layout: Sidebar + Main Area -->
+    <div class="app-workspace">
+      <!-- Left Sidebar -->
+      <aside class="app-sidebar" aria-label="Bảng điều khiển lịch">
+        <!-- Mini Calendar -->
+        <div class="mini-calendar">
+          <div class="mini-cal-header">
+            <div class="mini-cal-title" id="mini-cal-month-title">Tháng 9, 2026</div>
+            <div class="mini-cal-nav">
+              <button id="mini-cal-prev" title="Tháng trước" aria-label="Tháng trước">&lt;</button>
+              <button id="mini-cal-next" title="Tháng sau" aria-label="Tháng sau">&gt;</button>
+            </div>
+          </div>
+          <div class="mini-cal-grid" id="mini-cal-grid">
+            <!-- Day labels & cells rendered by JavaScript -->
+          </div>
+        </div>
+
+        <!-- Quick Filters -->
+        <div>
+          <div class="sidebar-section-title">Bộ lọc lịch họp</div>
+          <div class="filter-list">
+            <div class="filter-item active" id="filter-all" data-filter="all">
+              <span>Tất cả cuộc họp</span>
+              <span class="filter-count" id="count-all-meetings">0</span>
+            </div>
+            <div class="filter-item" id="filter-mine" data-filter="mine">
+              <span>Cuộc họp của tôi</span>
+              <span class="filter-count" id="count-mine-meetings">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Account Switcher (Helper for Test / Review) -->
+        <div class="quick-switcher-card">
+          <div class="quick-switcher-title">
+            <span>Tài khoản Demo</span>
+            <span style="font-size: 9px; opacity: 0.8;">1-Click</span>
+          </div>
+          <div class="quick-switch-pills">
+            <button class="switch-pill" data-email="admin@company.com" title="Quản trị viên toàn hệ thống">Admin</button>
+            <button class="switch-pill" data-email="organizer1@company.com" title="Người tổ chức cuộc họp 1">Organizer 1</button>
+            <button class="switch-pill" data-email="organizer2@company.com" title="Người tổ chức cuộc họp 2">Organizer 2</button>
+            <button class="switch-pill" data-email="staff1@company.com" title="Nhân viên tham gia">Staff 1</button>
+            <button class="switch-pill" data-email="staff2@company.com" title="Nhân viên tham gia">Staff 2</button>
+          </div>
+        </div>
+
+        <!-- Room Availability Live Summary -->
+        <div>
+          <div class="sidebar-section-title">Trạng thái phòng họp</div>
+          <div class="room-status-list" id="sidebar-rooms-list">
+            <!-- Loaded by JavaScript -->
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Main Calendar Area -->
+      <main class="calendar-main-area">
+        <!-- Calendar Toolbar -->
+        <div class="calendar-toolbar">
+          <div class="cal-nav-group">
+            <button class="btn-today" id="btn-cal-today">Hôm nay</button>
+            <div style="display: flex; gap: 4px;">
+              <button class="icon-btn" id="btn-cal-prev" title="Khoảng trước" aria-label="Trước">&lt;</button>
+              <button class="icon-btn" id="btn-cal-next" title="Khoảng sau" aria-label="Sau">&gt;</button>
+            </div>
+            <h2 class="cal-current-label" id="cal-current-label">Tháng 9 năm 2026</h2>
+          </div>
+
+          <!-- Real-time Search Input -->
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" id="input-global-search" placeholder="Tìm theo tên, người, phòng..." aria-label="Tìm kiếm cuộc họp">
+          </div>
+        </div>
+
+        <!-- Calendar Container for Different Views -->
+        <div class="calendar-view-container" id="calendar-views-host">
+          <!-- Month View Grid -->
+          <div id="view-month" class="view-panel">
+            <div class="month-view-grid" id="month-grid">
+              <!-- Rendered by JavaScript -->
+            </div>
+          </div>
+
+          <!-- Week View Grid -->
+          <div id="view-week" class="view-panel" style="display: none;">
+            <div id="week-grid-container">
+              <!-- Rendered by JavaScript -->
+            </div>
+          </div>
+
+          <!-- Agenda / List View -->
+          <div id="view-list" class="view-panel" style="display: none;">
+            <div class="agenda-view-container" id="agenda-list-container">
+              <!-- Rendered by JavaScript -->
+            </div>
+          </div>
+
+          <!-- Rooms Matrix View -->
+          <div id="view-rooms" class="view-panel" style="display: none;">
+            <div id="rooms-grid-container">
+              <!-- Rendered by JavaScript -->
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 1: Form Tạo Cuộc Họp Mới (AC1 -> AC6)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="modal-create-meeting" role="dialog" aria-modal="true" aria-labelledby="modal-create-title">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-create-title">
+          <span>📅</span>
+          <span>Tạo lịch họp mới</span>
+        </h3>
+        <button class="modal-close-btn" id="btn-close-modal" title="Đóng form" aria-label="Đóng">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- 1. Tiêu đề cuộc họp (Bắt buộc) -->
+        <div class="form-group">
+          <label class="form-label" for="input-meeting-title">
+            <span>Tiêu đề cuộc họp <span class="required-star">*</span></span>
+            <span class="form-label-hint">Tối đa 200 ký tự</span>
+          </label>
+          <input type="text" class="form-input" id="input-meeting-title" placeholder="VD: Họp giao ban tuần, Họp chiến lược Q4..." maxlength="200" required>
+          <div class="form-error-msg" id="error-meeting-title">
+            <span>⚠</span>
+            <span>Vui lòng nhập tên cuộc họp</span>
+          </div>
+        </div>
+
+        <!-- 2. Thời gian bắt đầu & kết thúc (Bắt buộc) -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="input-start-time">
+              <span>Thời gian bắt đầu <span class="required-star">*</span></span>
+            </label>
+            <input type="datetime-local" class="form-input" id="input-start-time" required>
+            <div class="form-error-msg" id="error-start-time">
+              <span>⚠</span>
+              <span>Thời gian bắt đầu không được ở quá khứ</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="input-end-time">
+              <span>Thời gian kết thúc <span class="required-star">*</span></span>
+            </label>
+            <input type="datetime-local" class="form-input" id="input-end-time" required>
+            <div class="form-error-msg" id="error-end-time">
+              <span>⚠</span>
+              <span>Thời gian kết thúc phải sau thời gian bắt đầu</span>
+            </div>
+            <!-- Quick preset durations -->
+            <div class="time-presets">
+              <span style="font-size: 11px; color: var(--text-subtle); align-self: center;">Nhanh:</span>
+              <button type="button" class="preset-btn" data-minutes="30">+30 phút</button>
+              <button type="button" class="preset-btn" data-minutes="60">+1 giờ</button>
+              <button type="button" class="preset-btn" data-minutes="90">+1.5 giờ</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Người tham gia (Bắt buộc) -->
+        <div class="form-group">
+          <label class="form-label" for="participant-search-input">
+            <span>Người tham gia <span class="required-star">*</span></span>
+            <span class="form-label-hint">Tối thiểu 1 người ngoài người tổ chức</span>
+          </label>
+          <div class="participant-picker-container">
+            <div class="participant-tags-box" id="participant-picker">
+              <!-- Selected user tags injected here -->
+              <input type="text" class="participant-search-input" id="participant-search-input" placeholder="Gõ tên hoặc email để tìm...">
+            </div>
+            <!-- Live Search Suggestions Dropdown -->
+            <div class="participant-dropdown" id="participant-dropdown">
+              <!-- Filtered options -->
+            </div>
+          </div>
+          <div class="form-error-msg" id="error-participants">
+            <span>⚠</span>
+            <span>Vui lòng chọn ít nhất 1 người tham gia</span>
+          </div>
+        </div>
+
+        <!-- 4. Phòng họp / Link họp trực tuyến (Không bắt buộc) -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="select-room-id">
+              <span>Phòng họp trực tiếp</span>
+              <span class="form-label-hint">Tùy chọn</span>
+            </label>
+            <select class="form-select" id="select-room-id">
+              <option value="">-- Không chọn phòng (Họp online) --</option>
+              <!-- Populated by JavaScript from GET /api/v1/rooms -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="input-meeting-link">
+              <span>Link họp trực tuyến</span>
+              <span class="form-label-hint">Google Meet, Teams...</span>
+            </label>
+            <input type="url" class="form-input" id="input-meeting-link" placeholder="https://meet.google.com/xyz-abcd-efg">
+          </div>
+        </div>
+
+        <!-- 5. Mô tả / Nội dung họp (Không bắt buộc) -->
+        <div class="form-group">
+          <label class="form-label" for="input-description">
+            <span>Mô tả &amp; Mục tiêu cuộc họp</span>
+            <span class="form-label-hint">Tùy chọn</span>
+          </label>
+          <textarea class="form-textarea" id="input-description" rows="3" placeholder="Ghi chú chương trình cuộc họp, tài liệu cần chuẩn bị..."></textarea>
+        </div>
+
+        <!-- 6. Đính kèm tài liệu (Không bắt buộc: PDF, DOCX, XLSX, PPTX, tối đa 5 file, 10MB/file) -->
+        <div class="form-group">
+          <label class="form-label">
+            <span>Tệp đính kèm</span>
+            <span class="form-label-hint">PDF, DOCX, XLSX, PPTX &bull; Tối đa 5 file &bull; 10 MB/file</span>
+          </label>
+          <div class="dropzone-container" id="dropzone-attachments">
+            <div class="dropzone-icon">📁</div>
+            <div class="dropzone-text">Kéo thả tài liệu vào đây hoặc <span style="color: var(--primary-600); text-decoration: underline;">bấm để duyệt</span></div>
+            <div class="dropzone-hint">Hỗ trợ các định dạng tài liệu văn phòng chuẩn</div>
+            <input type="file" id="input-attachments-file" multiple accept=".pdf,.docx,.xlsx,.pptx" style="display: none;">
+          </div>
+          <!-- Preview list of attached files -->
+          <div class="attached-files-list" id="attached-files-list"></div>
+        </div>
+
+        <!-- 7. Cài đặt nhắc nhở (Mặc định: Trước 15 phút theo AC1) -->
+        <div class="reminder-banner">
+          <span>⏰</span>
+          <span>Cài đặt nhắc nhở: Tự động gửi email thông báo và nhắc trước <strong>15 phút</strong> qua hệ thống hàng đợi.</span>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btn-cancel-meeting">Hủy bỏ</button>
+        <button type="button" class="btn-primary" id="btn-submit-meeting">
+          <span>Lưu lịch họp</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 2: Cảnh Báo Trùng Lịch & Gợi Ý Khung Giờ (AC4)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="modal-conflict-warning" role="dialog" aria-modal="true" style="z-index: 110;">
+    <div class="modal-container" style="max-width: 540px;">
+      <div class="modal-header" style="background: var(--rose-bg); border-bottom-color: rgba(239, 68, 68, 0.2);">
+        <h3 class="modal-title" style="color: var(--rose-600);">
+          <span>⚠</span>
+          <span>Phát hiện Xung đột Lịch họp</span>
+        </h3>
+      </div>
+
+      <div class="modal-body">
+        <div class="conflict-warning-card">
+          <div class="conflict-title">Chi tiết xung đột thời gian:</div>
+          <ul class="conflict-details-list" id="conflict-details-list">
+            <!-- Conflict details rendered here -->
+          </ul>
+        </div>
+
+        <!-- Suggested Alternative Time Slots (up to 3) -->
+        <div class="suggestions-container" id="suggestions-box">
+          <div class="suggestions-heading">Gợi ý khung giờ trống gần nhất cùng ngày:</div>
+          <div id="suggested-slots-container">
+            <!-- Injected by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button type="button" class="btn-secondary" id="btn-dismiss-conflict">Quay lại chỉnh sửa</button>
+        <button type="button" class="btn-primary" id="btn-override-conflict" style="background: var(--rose-600);">
+          <span>Tạo dù trùng lịch</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 3: Xác Nhận Hủy Thao Tác (AC6)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="modal-confirm-discard" role="dialog" aria-modal="true" style="z-index: 120;">
+    <div class="modal-container confirm-dialog-container">
+      <div class="confirm-dialog-icon">⚠</div>
+      <h3 class="confirm-dialog-title">Xác nhận hủy thao tác</h3>
+      <p class="confirm-dialog-desc">Bạn có chắc muốn hủy? Dữ liệu vừa nhập sẽ không được lưu.</p>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="btn-secondary" id="btn-cancel-discard">Quay lại</button>
+        <button type="button" class="btn-primary" id="btn-confirm-discard" style="background: var(--rose-600);">Đồng ý</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 4: Chi Tiết Cuộc Họp (Meeting Details Drawer/Modal)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="modal-meeting-details" role="dialog" aria-modal="true">
+    <div class="modal-container" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="details-meeting-title">Chi tiết cuộc họp</h3>
+        <button class="modal-close-btn" id="btn-close-details">&times;</button>
+      </div>
+      <div class="modal-body" id="details-modal-body">
+        <!-- Rendered by JavaScript -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btn-dismiss-details">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       MODAL 5: Đăng Nhập Hệ Thống (Login Modal)
+       ========================================================================== -->
+  <div class="modal-backdrop" id="modal-login" role="dialog" aria-modal="true">
+    <div class="modal-container" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <span>🔐</span>
+          <span>Đăng nhập MeetFlow</span>
+        </h3>
+        <button class="modal-close-btn" id="btn-close-login">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Demo Accounts Quick Fill -->
+        <div style="background: var(--bg-surface-alt); padding: 12px; border-radius: var(--radius-md); margin-bottom: 8px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">TÀI KHOẢN MẪU CÓ SẴN (BẤM ĐỂ ĐIỀN):</div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="switch-pill" id="pill-fill-admin">Admin</button>
+            <button type="button" class="switch-pill" id="pill-fill-organizer">Organizer 1</button>
+            <button type="button" class="switch-pill" id="pill-fill-staff">Staff 1</button>
+          </div>
+        </div>
+
+        <form id="form-login" style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="form-group">
+            <label class="form-label" for="login-email">Email tài khoản</label>
+            <input type="email" class="form-input" id="login-email" required placeholder="admin@company.com">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="login-password">Mật khẩu</label>
+            <input type="password" class="form-input" id="login-password" required placeholder="••••••••">
+          </div>
+
+          <div id="login-error-msg" style="color: var(--rose-600); font-size: 12px; font-weight: 600; display: none;"></div>
+
+          <button type="submit" class="btn-primary" id="btn-submit-login" style="justify-content: center; margin-top: 6px;">
+            <span>Đăng nhập</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Toast Notification Container -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- Application Logic Scripts -->
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

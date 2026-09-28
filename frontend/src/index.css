@@ -1,0 +1,98 @@
+:root {
+  --color-deep-navy: #0f172a;
+  --color-tech-blue: #1e3a8a;
+  --color-tech-blue-light: #2563eb;
+  --color-tech-blue-hover: #1d4ed8;
+  --color-accent: #f59e0b;
+  --color-accent-hover: #d97706;
+  --color-light-bg: #f8fafc;
+  --color-gray-100: #f1f5f9;
+  --color-gray-200: #e2e8f0;
+  --color-gray-300: #cbd5e1;
+  --color-gray-600: #475569;
+  --color-white: #ffffff;
+  
+  --font-sans: 'Inter', 'Roboto', sans-serif;
+  
+  --grid-border: 1px solid var(--color-gray-200);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-light-bg);
+  color: var(--color-deep-navy);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Base UI Components */
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.btn-primary {
+  background-color: var(--color-tech-blue-light);
+  color: var(--color-white);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-tech-blue-hover);
+}
+
+.btn-accent {
+  background-color: var(--color-accent);
+  color: var(--color-white);
+}
+
+.btn-accent:hover {
+  background-color: var(--color-accent-hover);
+}
+
+/* Layout */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background-color: var(--color-deep-navy);
+  color: var(--color-white);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.topbar-brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topbar-brand span {
+  color: var(--color-accent);
+}
+
+.main-content {
+  flex: 1;
+  overflow: auto;
+  padding: 0; /* Full width for the grid */
+  background-color: var(--color-white);
+}
