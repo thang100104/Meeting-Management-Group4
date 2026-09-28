@@ -49,7 +49,7 @@ backend/meetings.db
 .env
 .env.*
 !.env.example
-backend/.env
+!backend/.env
 !backend/.env.example
 
 # Logs and Storage
