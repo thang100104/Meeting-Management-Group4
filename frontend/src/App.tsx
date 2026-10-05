@@ -66,7 +66,7 @@ export default function App() {
     <ErrorBoundary>
       <NotificationProvider>
         <Routes>
-          <Route path="/" element={<MainLayout currentUser={currentUser} />}>
+          <Route path="/" element={<MainLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardView />} />
             <Route path="approvals" element={<ApprovalsView />} />
@@ -77,8 +77,8 @@ export default function App() {
             <Route path="users" element={<UserManagement />} />
             <Route path="reports" element={<Analytics />} />
             <Route path="bot-qr-settings" element={<div style={{ padding: '24px', fontSize: '18px', color: '#64748b' }}>Trang Cấu hình Chatbot & QR đang phát triển...</div>} />
-            <Route path="system" element={<AuditLogViewer token={sessionStorage.getItem('access_token') || ''} userRole={currentUser.role} />} />
-            <Route path="profile" element={<ProfileView currentUser={currentUser} />} />
+            <Route path="system" element={<AuditLogViewer />} />
+            <Route path="profile" element={<ProfileView />} />
             <Route path="*" element={<DashboardView />} />
           </Route>
           <Route path="/login" element={<Login onLoginSuccess={() => { }} />} />

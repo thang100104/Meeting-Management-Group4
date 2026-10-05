@@ -330,7 +330,7 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
           </h3>
           <div className="flex flex-col gap-4">
             {filteredEvents.filter(e => {
-              if (viewMode === 'Tuần') return true;
+              if ((viewMode as string) === 'Tuần') return true;
               // Filter to exact date (demo logic uses startOfWeek offset)
               const eventDate = new Date(startOfWeekDate);
               eventDate.setDate(eventDate.getDate() + (e.dayOfWeek - 1));

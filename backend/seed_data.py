@@ -1,5 +1,12 @@
 import sys
 import os
+import io
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from sqlalchemy.orm import Session
@@ -150,8 +157,9 @@ def seed_db():
             status="SCHEDULED",
             qr_token=str(uuid.uuid4())
         )
-        # db.add_all([m1, m2])  # Sample booking removed
-        # db.commit()  # Sample booking removed
+        db.add(m2)
+        db.commit()
+        db.refresh(m2)
 
         # Participants cho m1
         # db.add(MeetingParticipant(meeting_id=m1.meeting_id, user_id=user_Phuong.user_id, rsvp_status="ACCEPTED"))  # removed

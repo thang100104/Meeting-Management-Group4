@@ -83,7 +83,7 @@ export default function ProfileView() {
       };
 
       // Gửi request PUT lên Backend để lưu vào Database
-      const userId = userProfile.id || userProfile.user_id;
+      const userId = (userProfile as any)?.id || (userProfile as any)?.user_id;
       if (!userId) {
         alert("Không tìm thấy ID người dùng để cập nhật!");
         return;
@@ -164,8 +164,8 @@ export default function ProfileView() {
               onClick={() => fileInputRef.current?.click()}
               className="w-32 h-32 mx-auto relative group rounded-full overflow-hidden border-4 border-slate-100 shadow-md mb-4 cursor-pointer"
             >
-              {userProfile.avatar || userProfile.avatarUrl ? (
-                <img src={userProfile.avatar || userProfile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              {userProfile.avatar || (userProfile as any)?.avatarUrl ? (
+                <img src={userProfile.avatar || (userProfile as any)?.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full bg-blue-100 text-blue-600 flex items-center justify-center text-5xl font-bold">
                   {userProfile.fullName ? userProfile.fullName.charAt(0).toUpperCase() : 'H'}
@@ -180,7 +180,7 @@ export default function ProfileView() {
               <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleImageChange} />
             </div>
 
-            {(userProfile.avatar || userProfile.avatarUrl) && (
+            {(userProfile.avatar || (userProfile as any)?.avatarUrl) && (
               <button
                 onClick={handleRemoveAvatar}
                 className="text-xs text-rose-500 hover:text-rose-600 font-medium flex items-center justify-center gap-1 mx-auto mb-4"

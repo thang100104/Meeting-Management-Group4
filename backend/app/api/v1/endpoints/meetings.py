@@ -98,7 +98,38 @@ def create_meeting(
                         detail=f"Vai trò '{current_user.role.role_name}' không có quyền đặt phòng '{room.room_name}'. Phòng này bị giới hạn quyền truy cập."
                     )
 
-        # ── 7. TẠO CUỘC HỌP (Transaction) ──
+        # ── 4. KIỂM TRA THIẾT BỊ VÀ PHÁT HIỆN XUNG ĐỘT (Conflict Detection) ──
+        if data.equipment_ids:
+            for eq_id in set(data.equipment_ids):
+                eq = db.query(Equipment).filter(Equipment.equipment_id == eq_id).first()
+                if not eq:
+                    raise HTTPException(status_code=404, detail=f"Không tìm thấy thiết bị ID={eq_id}")
+                if eq.status != "AVAILABLE":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Thiết bị '{eq.equipment_name}' đang ở trạng thái {eq.status}, không thể mượn"
+                    )
+
+                conflict_eq = (
+                    db.query(Meeting)
+                    .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
+                    .filter(
+                        MeetingEquipment.equipment_id == eq_id,
+                        Meeting.status != "CANCELLED",
+                        Meeting.start_time < data.end_time,
+                        Meeting.end_time > data.start_time
+                    )
+                    .first()
+                )
+                if conflict_eq:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Trùng lịch thiết bị! Thiết bị '{eq.equipment_name}' đã được đăng ký mượn cho cuộc họp '{conflict_eq.title}' ({conflict_eq.start_time.strftime('%H:%M')} - {conflict_eq.end_time.strftime('%H:%M')})"
+                    )
+
+        # ── 5. TẠO CUỘC HỌP (Transaction) ──
+        # Mặc định: ADMIN tạo thì duyệt luôn (SCHEDULED), ORGANIZER thì PENDING chờ duyệt nếu cấu hình, hoặc SCHEDULED
+        meeting_status = "SCHEDULED" if current_user.role.role_name == "ADMIN" else "PENDING"
         meeting = Meeting(
             organizer_id=current_user.user_id,
             room_id=data.room_id,
@@ -106,16 +137,32 @@ def create_meeting(
             description=data.description,
             start_time=data.start_time,
             end_time=data.end_time,
-            meeting_type=data.meeting_type,
+            meeting_type=data.meeting_type or "IN_PERSON",
             meeting_link=data.meeting_link,
             passcode=data.passcode,
-            status="PENDING"
+            status=meeting_status
         )
         if data.meeting_type in ["ONLINE", "HYBRID"] and not data.meeting_link:
             meeting.meeting_link = f"https://meet.ictu.edu.vn/{str(uuid.uuid4())[:8]}"
             meeting.passcode = "123456"
         
         db.add(meeting)
+        db.flush() # Lấy meeting_id
+
+        # ── 6. THÊM NGƯỜI THAM GIA ──
+        if data.participant_ids:
+            for uid in set(data.participant_ids):
+                u = db.query(User).filter(User.user_id == uid).first()
+                if u:
+                    participant = MeetingParticipant(meeting_id=meeting.meeting_id, user_id=uid, status="PENDING")
+                    db.add(participant)
+
+        # ── 7. GÁN THIẾT BỊ MƯỢN KÈM ──
+        if data.equipment_ids:
+            for eq_id in set(data.equipment_ids):
+                me = MeetingEquipment(meeting_id=meeting.meeting_id, equipment_id=eq_id, quantity=1)
+                db.add(me)
+
         db.commit()
         db.refresh(meeting)
         

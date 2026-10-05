@@ -45,18 +45,18 @@ def run_tests():
     client = TestClient(app)
 
     # Đăng nhập lấy Token các Role
-    res_admin = client.post("/api/v1/auth/login", json={"email": "admin@ictu.vn", "password": "Admin@123"})
-    assert res_admin.status_code == 200
+    res_admin = client.post("/api/v1/auth/login", json={"email": "admin@ictu.edu.vn", "password": "123456"})
+    assert res_admin.status_code == 200, res_admin.text
     admin_token = res_admin.json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
-    res_org = client.post("/api/v1/auth/login", json={"email": "organizer@ictu.vn", "password": "123456"})
-    assert res_org.status_code == 200
+    res_org = client.post("/api/v1/auth/login", json={"email": "giangvien@ictu.edu.vn", "password": "123456"})
+    assert res_org.status_code == 200, res_org.text
     org_token = res_org.json()["access_token"]
     org_headers = {"Authorization": f"Bearer {org_token}"}
 
-    res_part = client.post("/api/v1/auth/login", json={"email": "student1@ictu.vn", "password": "password123"})
-    assert res_part.status_code == 200
+    res_part = client.post("/api/v1/auth/login", json={"email": "sinhvien@ictu.edu.vn", "password": "123456"})
+    assert res_part.status_code == 200, res_part.text
     part_headers = {"Authorization": f"Bearer {res_part.json()['access_token']}"}
 
     # 2. Test xem danh sách thiết bị (GET /api/v1/equipments - US #12, #13)
