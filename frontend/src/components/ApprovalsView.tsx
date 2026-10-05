@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter, Check, X, Eye, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Search, Filter, Check, X, Eye, CheckCircle2, XCircle, Clock, Trash2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { getStorage, setStorage, useDataSync } from '../utils/syncHelper';
 import api from '../services/api';
@@ -43,7 +43,7 @@ export default function ApprovalsView() {
         return {
           id: m.meeting_id,
           name: m.organizer?.full_name || 'Giảng viên',
-          role: m.organizer?.role || 'Giảng viên',
+          role: m.organizer?.role?.role_name || m.organizer?.role || 'Giảng viên',
           room: m.room?.room_name || 'Phòng ' + m.room_id,
           capacity: (m.room?.capacity || 0) + ' chỗ',
           time: timeSlotStr,
@@ -78,19 +78,19 @@ export default function ApprovalsView() {
           else if (m.status === 'Đã hủy' || m.status === 'cancelled') statusStr = 'cancelled';
 
           let dynamicAvatar = m.userAvatar || m.requesterAvatar || '';
-          
+
           try {
             const allUsers = JSON.parse(localStorage.getItem('users') || '[]');
             const matchedUser = allUsers.find((u: any) => u.email === m.lecturerEmail || u.email === m.userEmail);
             if (matchedUser && matchedUser.avatar) {
               dynamicAvatar = matchedUser.avatar;
             } else {
-               const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-               if (currentUser && (currentUser.email === m.lecturerEmail || currentUser.email === m.userEmail)) {
-                 dynamicAvatar = currentUser.avatar || currentUser.avatarUrl || dynamicAvatar;
-               }
+              const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+              if (currentUser && (currentUser.email === m.lecturerEmail || currentUser.email === m.userEmail)) {
+                dynamicAvatar = currentUser.avatar || currentUser.avatarUrl || dynamicAvatar;
+              }
             }
-          } catch(e) {}
+          } catch (e) { }
 
           return {
             id: m.id,
@@ -170,6 +170,27 @@ export default function ApprovalsView() {
     alert('Đã từ chối yêu cầu!');
     loadRequests();
     window.dispatchEvent(new Event('roomBookingsUpdated'));
+    window.dispatchEvent(new Event('request-updated'));
+  };
+
+  const handleDelete = async (id: any) => {
+    if (!window.confirm('Bạn có chắc muốn xóa hẳn đơn này không?')) return;
+    try {
+      await api.delete(`/meetings/${id}`);
+    } catch (error) {
+      console.warn("Lỗi API Delete:", error);
+    }
+    // Xóa khỏi localStorage nếu có
+    const saved = localStorage.getItem('meetinghub_room_requests');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const filtered = parsed.filter((m: any) => m.id?.toString() !== id?.toString());
+        localStorage.setItem('meetinghub_room_requests', JSON.stringify(filtered));
+      } catch (e) { }
+    }
+    alert('Đã xóa đơn thành công!');
+    loadRequests();
     window.dispatchEvent(new Event('request-updated'));
   };
 
@@ -321,6 +342,7 @@ export default function ApprovalsView() {
                         </>
                       )}
                       <button onClick={() => handleViewDetails(req.id)} className="btn-glass-view" title="Xem chi tiết"><Eye size={18} /></button>
+                      <button onClick={() => handleDelete(req.id)} title="Xóa đơn" style={{ background: '#fee2e2', border: 'none', borderRadius: '8px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#dc2626' }}><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
@@ -397,7 +419,7 @@ export default function ApprovalsView() {
                   <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '4px' }}>Mục đích sử dụng</div>
                   <div style={{ fontSize: '15px', fontWeight: 600, color: '#0f172a' }}>{selectedRequest.reason}</div>
                 </div>
-                
+
                 <div style={{ display: 'flex', gap: '16px' }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '4px' }}>Số người dự kiến</div>
@@ -423,7 +445,7 @@ export default function ApprovalsView() {
               <button onClick={() => setSelectedRequest(null)} style={{ padding: '10px 20px', borderRadius: '12px', fontSize: '14px', fontWeight: 600, color: '#64748b', backgroundColor: '#fff', border: '1px solid #cbd5e1', cursor: 'pointer' }}>
                 Đóng
               </button>
-              
+
               {selectedRequest.status === 'pending' && (
                 <>
                   <button onClick={() => { handleReject(selectedRequest.id); setSelectedRequest(null); }} style={{ padding: '10px 20px', borderRadius: '12px', fontSize: '14px', fontWeight: 600, color: '#fff', backgroundColor: '#ef4444', border: 'none', cursor: 'pointer' }}>

@@ -57,15 +57,65 @@ def seed_db():
         # 4. Tạo Rooms
         print("Tạo Rooms...")
         rooms_data = [
-            Room(room_name="Hội trường lớn C1 (C1-101)", capacity=150, location="Tầng 1 Tòa C1"),
-            Room(room_name="Phòng họp Ban Giám hiệu (A1-201)", capacity=30, location="Tầng 2 Tòa A1"),
-            Room(room_name="Phòng hội thảo Khoa CNTT (C1-402)", capacity=60, location="Tầng 4 Tòa C1"),
-            Room(room_name="Phòng họp chuyên đề (C1-305)", capacity=25, location="Tầng 3 Tòa C1")
+            Room(
+                room_name="Hội trường lớn C1 (C1-101)",
+                capacity=150,
+                location="Tầng 1 Tòa C1",
+                status="AVAILABLE",
+                description="Hội trường lớn dành cho các hội nghị, lễ tốt nghiệp và sự kiện quy mô toàn trường.",
+                image_url="https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&q=80&w=800",
+                equipments="Máy chiếu 4K Sony,Loa hội trường JBL,Micro không dây Shure,Điều hòa trung tâm,Wifi 6 High-Speed"
+            ),
+            Room(
+                room_name="Phòng họp Ban Giám hiệu (A1-201)",
+                capacity=30,
+                location="Tầng 2 Tòa A1",
+                status="AVAILABLE",
+                description="Phòng họp cao cấp dành cho Ban Giám hiệu và các cuộc họp quan trọng cấp trường.",
+                image_url="https://images.unsplash.com/photo-1571624436279-b272aff752b5?auto=format&fit=crop&q=80&w=800",
+                equipments="Máy chiếu 4K Sony,Bộ camera họp trực tuyến Logitech,Điều hòa trung tâm,Wifi 6 High-Speed"
+            ),
+            Room(
+                room_name="Phòng hội thảo Khoa CNTT (C1-402)",
+                capacity=60,
+                location="Tầng 4 Tòa C1",
+                status="AVAILABLE",
+                description="Phòng hội thảo chuyên biệt cho Khoa CNTT, phù hợp cho các seminar và bảo vệ đồ án.",
+                image_url="https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&q=80&w=800",
+                equipments="Máy chiếu 4K Sony,Bảng tương tác thông minh,Bộ camera họp trực tuyến Logitech,Micro không dây Shure,Wifi 6 High-Speed"
+            ),
+            Room(
+                room_name="Phòng họp chuyên đề (C1-305)",
+                capacity=25,
+                location="Tầng 3 Tòa C1",
+                status="AVAILABLE",
+                description="Phòng họp nhỏ phù hợp cho các buổi họp bộ môn và thảo luận chuyên đề.",
+                image_url="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=800",
+                equipments="Laptop trình chiếu,Điều hòa trung tâm,Wifi 6 High-Speed"
+            ),
+            Room(
+                room_name="Phòng Lab Máy tính (B1-301)",
+                capacity=50,
+                location="Tầng 3 Tòa B1",
+                status="AVAILABLE",
+                description="Phòng máy tính với 50 máy tính cá nhân, phục vụ thực hành lập trình và thi trực tuyến.",
+                image_url="https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&q=80&w=800",
+                equipments="Laptop trình chiếu,Bảng tương tác thông minh,Điều hòa trung tâm,Wifi 6 High-Speed"
+            ),
+            Room(
+                room_name="Phòng Đào tạo A4 (A1-401)",
+                capacity=40,
+                location="Tầng 4 Tòa A1",
+                status="MAINTENANCE",
+                description="Phòng đào tạo đang được bảo trì, nâng cấp thiết bị. Dự kiến hoàn thành trong tuần tới.",
+                image_url="https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&q=80&w=800",
+                equipments="Máy chiếu 4K Sony,Bảng tương tác thông minh,Điều hòa trung tâm"
+            ),
         ]
         db.add_all(rooms_data)
         db.commit()
         
-        room_1, room_2, room_3, room_4 = rooms_data
+        room_1, room_2, room_3, room_4, room_5, room_6 = rooms_data
 
         # 5. Tạo Equipment
         print("Tạo Equipment...")
@@ -86,17 +136,7 @@ def seed_db():
         tomorrow = now + timedelta(days=1)
         day_after = now + timedelta(days=2)
 
-        m1 = Meeting(
-            title="Họp Giao ban Khoa CNTT Đầu tuần",
-            description="Báo cáo tiến độ và kế hoạch tuần tới.",
-            room_id=room_3.room_id,
-            organizer_id=user_Phuong.user_id,
-            start_time=tomorrow.replace(hour=8, minute=0, second=0, microsecond=0),
-            end_time=tomorrow.replace(hour=10, minute=0, second=0, microsecond=0),
-            meeting_type="IN_PERSON",
-            status="SCHEDULED",
-            qr_token=str(uuid.uuid4())
-        )
+        # Sample booking m1 removed
         m2 = Meeting(
             title="Bảo vệ Đồ án Tốt nghiệp K16",
             description="Hội đồng đánh giá luận văn tốt nghiệp.",
@@ -110,12 +150,12 @@ def seed_db():
             status="SCHEDULED",
             qr_token=str(uuid.uuid4())
         )
-        db.add_all([m1, m2])
-        db.commit()
+        # db.add_all([m1, m2])  # Sample booking removed
+        # db.commit()  # Sample booking removed
 
         # Participants cho m1
-        db.add(MeetingParticipant(meeting_id=m1.meeting_id, user_id=user_Phuong.user_id, rsvp_status="ACCEPTED"))
-        db.add(MeetingParticipant(meeting_id=m1.meeting_id, user_id=user_B.user_id, rsvp_status="PENDING"))
+        # db.add(MeetingParticipant(meeting_id=m1.meeting_id, user_id=user_Phuong.user_id, rsvp_status="ACCEPTED"))  # removed
+        # db.add(MeetingParticipant(meeting_id=m1.meeting_id, user_id=user_B.user_id, rsvp_status="PENDING"))  # removed
         
         # Participants cho m2
         db.add(MeetingParticipant(meeting_id=m2.meeting_id, user_id=user_Phuong.user_id, rsvp_status="ACCEPTED"))
@@ -123,7 +163,7 @@ def seed_db():
         db.add(MeetingParticipant(meeting_id=m2.meeting_id, user_id=user_E.user_id, rsvp_status="PENDING"))
 
         # Thiết bị mượn cho m1
-        db.add(MeetingEquipment(meeting_id=m1.meeting_id, equipment_id=eq_cam.equipment_id, quantity=1))
+        # db.add(MeetingEquipment(meeting_id=m1.meeting_id, equipment_id=eq_cam.equipment_id, quantity=1))  # removed
 
         # Thiết bị mượn cho m2
         db.add(MeetingEquipment(meeting_id=m2.meeting_id, equipment_id=eq_prj.equipment_id, quantity=1))

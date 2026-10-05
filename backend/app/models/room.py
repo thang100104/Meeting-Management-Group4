@@ -12,6 +12,8 @@ class Room(Base):
     location = Column(String(150), nullable=False)  # Ví dụ: "Tầng 3, Nhà C1"
     status = Column(String(20), default="AVAILABLE", index=True)  # AVAILABLE, MAINTENANCE
     description = Column(Text, nullable=True)
+    image_url = Column(String(500), nullable=True)  # URL ảnh đại diện của phòng
+    equipments = Column(Text, nullable=True)  # Danh sách thiết bị, phân tách bởi dấu phẩy
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Eye, Trash2, Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, FileText, Info } from 'lucide-react';
-import { getStorage, setStorage, useDataSync } from '../utils/syncHelper';
+// Legacy syncHelper imports removed – data now fetched directly from API
 import api from '../services/api';
 
 interface RoomRequest {
@@ -30,22 +30,16 @@ export default function LecturerMyRequests({ userProfile }: { userProfile: any }
     loadRequests();
   }, [userProfile]);
 
-  useDataSync('meetinghub_room_requests', () => {
-    loadRequests();
-  });
-
+  // useDataSync removed – component now relies solely on API data
   const loadRequests = async () => {
-    let apiRequests: RoomRequest[] = [];
     try {
       const response = await api.get('/meetings');
       const allMeetings = response.data || [];
-
-      // Lấy userProfile.id nếu có, hoặc dùng email để dự phòng
-      apiRequests = allMeetings
+      const apiRequests: RoomRequest[] = allMeetings
         .filter((m: any) => m.organizer_id === userProfile?.id || m.organizer?.email === userProfile?.email)
         .map((m: any) => {
           let statusStr = 'Chờ duyệt';
-          if (m.status === 'CONFIRMED' || m.status === 'SCHEDULED' || m.status === 'APPROVED') statusStr = 'Đã duyệt';
+          if (['CONFIRMED', 'SCHEDULED', 'APPROVED'].includes(m.status)) statusStr = 'Đã duyệt';
           else if (m.status === 'CANCELLED') statusStr = 'Đã hủy';
           else if (m.status === 'REJECTED') statusStr = 'Từ chối';
 
@@ -58,7 +52,7 @@ export default function LecturerMyRequests({ userProfile }: { userProfile: any }
             lecturerName: m.organizer?.full_name || userProfile?.fullName,
             lecturerEmail: m.organizer?.email || userProfile?.email,
             roomName: m.room?.room_name || 'Phòng ' + m.room_id,
-            roomId: m.room_id.toString(),
+            roomId: m.room_id?.toString() ?? '',
             title: m.title,
             type: m.meeting_type || 'Họp',
             date: startDate.toISOString().split('T')[0],
@@ -67,83 +61,28 @@ export default function LecturerMyRequests({ userProfile }: { userProfile: any }
             notes: m.description || '',
             status: statusStr as any,
             rejectReason: '',
-            createdAt: m.created_at || new Date().toISOString()
+            createdAt: m.created_at || new Date().toISOString(),
           };
         });
+
+      apiRequests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setRequests(apiRequests);
     } catch (error) {
-      console.error('Error fetching requests from API, relying on local mock', error);
+      console.error('Error fetching requests from API', error);
     }
-
-    // ĐỌC THÊM TỪ LOCALSTORAGE ĐỂ ĐỒNG BỘ MOCK DATA
-    let localRequests: RoomRequest[] = [];
-    const saved = localStorage.getItem('meetinghub_room_requests');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Lọc bỏ dữ liệu rác B1, B2, B3, B4...
-        const invalidIds = ['B1', 'B2', 'B3', 'B4', '#B1', '#B2', '#B3', '#B4'];
-        const cleaned = parsed.filter((m: any) => !invalidIds.includes(m.id?.toString()));
-        if (cleaned.length !== parsed.length) {
-          localStorage.setItem('meetinghub_room_requests', JSON.stringify(cleaned));
-        }
-
-        localRequests = cleaned
-          .map((m: any) => ({
-            id: m.id.startsWith('REQ_') ? m.id : 'REQ_' + m.id,
-            lecturerName: m.lecturerName || userProfile?.fullName || 'Giảng viên',
-            lecturerEmail: userProfile?.email || '',
-            roomName: m.roomName || '',
-            roomId: m.roomId || '',
-            title: m.purpose || m.title || 'Không có tiêu đề',
-            type: m.type || 'Họp',
-            date: m.date || new Date().toISOString().split('T')[0],
-            timeSlot: m.timeSlot || '',
-            attendees: m.participants || m.attendees || 0,
-            notes: m.notes || '',
-            status: (m.status === 'pending' ? 'Chờ duyệt' : m.status) as any,
-            rejectReason: m.rejectReason || '',
-            createdAt: m.createdAt || new Date().toISOString()
-          }));
-      } catch (e) {
-        console.error("Parse mock requests failed", e);
-      }
-    }
-
-    // Gộp và loại bỏ trùng lặp (dựa vào ID)
-    const combinedMap = new Map();
-    [...apiRequests, ...localRequests].forEach(req => {
-      if (!combinedMap.has(req.id)) {
-        combinedMap.set(req.id, req);
-      }
-    });
-
-    const finalRequests = Array.from(combinedMap.values());
-    finalRequests.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    setRequests(finalRequests);
   };
+
 
   const handleCancelRequest = async (reqId: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn hủy yêu cầu đặt phòng này?')) return;
-
     const strId = reqId.replace('REQ_', '');
-
     try {
       await api.patch(`/meetings/${strId}/status`, { status: 'CANCELLED' });
     } catch (err) {
-      console.warn("Lỗi API Hủy đơn, fallback về local", err);
+      console.warn('Lỗi API Hủy đơn', err);
     }
-
-    let allRequests = getStorage<any[]>('meetinghub_room_requests', []);
-    allRequests = allRequests.map(req => {
-      const checkId = req.id.toString().replace('REQ_', '');
-      if (checkId === strId) {
-        return { ...req, status: 'Đã hủy' };
-      }
-      return req;
-    });
-    setStorage('meetinghub_room_requests', allRequests);
-
-    setRequests(prev => prev.map(req => req.id === reqId ? { ...req, status: 'Đã hủy' as const } : req));
+    // Reload requests from API to reflect cancellation
+    await loadRequests();
     alert('Đã hủy yêu cầu thành công!');
   };
 

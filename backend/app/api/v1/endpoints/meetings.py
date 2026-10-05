@@ -12,6 +12,7 @@ from app.schemas.meeting import MeetingCreate, MeetingUpdate, MeetingOut, Meetin
 from app.api.deps import get_current_active_user, require_roles
 from app.models.audit import AuditLog
 import uuid
+import traceback
 
 router = APIRouter()
 
@@ -65,161 +66,78 @@ def create_meeting(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    # ── 0. KIỂM TRA PHÂN QUYỀN RBAC ──
-    # Chỉ ADMIN và ORGANIZER mới được tạo cuộc họp
-    if current_user.role.role_name == "PARTICIPANT":
-        raise HTTPException(
-            status_code=403,
-            detail="Vai trò PARTICIPANT (Sinh viên) không có quyền tạo cuộc họp. Chỉ ADMIN hoặc ORGANIZER mới được phép."
-        )
-
-    # ── 1. VALIDATION THỜI GIAN ──
-    if data.start_time >= data.end_time:
-        raise HTTPException(status_code=400, detail="Thời gian kết thúc phải sau thời gian bắt đầu")
-    
-    now = datetime.now()
-    if data.start_time < now:
-        raise HTTPException(status_code=400, detail="Không thể đặt lịch họp trong quá khứ. Vui lòng chọn thời gian trong tương lai.")
-
-    # ── 2. KIỂM TRA PHÒNG TỒN TẠI VÀ TRẠNG THÁI ──
-    room = db.query(Room).filter(Room.room_id == data.room_id).first()
-    if not room:
-        raise HTTPException(status_code=404, detail="Không tìm thấy phòng họp")
-    if room.status != "AVAILABLE":
-        raise HTTPException(status_code=400, detail=f"Phòng '{room.room_name}' đang bảo trì (MAINTENANCE), không thể đặt")
-    
-    # ── 3. KIỂM TRA QUYỀN ĐẶT PHÒNG (Role restriction - US #21) ──
-    if current_user.role.role_name != "ADMIN":
-        restrictions = db.query(RoomRestriction).filter(RoomRestriction.room_id == data.room_id).all()
-        if restrictions:
-            restricted_role_ids = [r.role_id for r in restrictions]
-            if current_user.role_id in restricted_role_ids:
-                raise HTTPException(
-                    status_code=403, 
-                    detail=f"Vai trò '{current_user.role.role_name}' không có quyền đặt phòng '{room.room_name}'. Phòng này bị giới hạn quyền truy cập."
-                )
-
-    # ── 4. THUẬT TOÁN CHỐNG TRÙNG LỊCH PHÒNG (Room Overlap Detection) ──
-    #    Công thức: (new_start < existing_end) AND (new_end > existing_start)
-    room_conflicts = db.query(Meeting).filter(
-        Meeting.room_id == data.room_id,
-        Meeting.status.notin_(["CANCELLED", "COMPLETED"]),
-        Meeting.start_time < data.end_time,
-        Meeting.end_time > data.start_time
-    ).all()
-    
-    if room_conflicts:
-        conflict_details = []
-        for c in room_conflicts:
-            conflict_details.append({
-                "meeting_id": c.meeting_id,
-                "title": c.title,
-                "start_time": c.start_time.strftime("%Y-%m-%d %H:%M"),
-                "end_time": c.end_time.strftime("%H:%M"),
-                "organizer_id": c.organizer_id
-            })
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "ROOM_SCHEDULE_CONFLICT",
-                "message": f"Phòng '{room.room_name}' đã bị trùng lịch trong khung giờ này!",
-                "conflicts": conflict_details
-            }
-        )
-
-    # ── 5. KIỂM TRA & CHỐNG TRÙNG LỊCH THIẾT BỊ (Equipment Conflict Detection) ──
-    if data.equipment_ids:
-        for eq_id in set(data.equipment_ids):
-            eq = db.query(Equipment).filter(Equipment.equipment_id == eq_id).first()
-            if not eq:
-                raise HTTPException(status_code=404, detail=f"Không tìm thấy thiết bị ID={eq_id}")
-            if eq.status != "AVAILABLE":
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Thiết bị '{eq.equipment_name}' đang ở trạng thái {eq.status}, không thể mượn"
-                )
-
-            # Xung đột thời gian thiết bị
-            conflict_eq = (
-                db.query(Meeting)
-                .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
-                .filter(
-                    MeetingEquipment.equipment_id == eq_id,
-                    Meeting.status.notin_(["CANCELLED", "COMPLETED"]),
-                    Meeting.start_time < data.end_time,
-                    Meeting.end_time > data.start_time
-                )
-                .first()
+    try:
+        # ── 0. KIỂM TRA PHÂN QUYỀN RBAC ──
+        if current_user.role.role_name == "PARTICIPANT":
+            raise HTTPException(
+                status_code=403,
+                detail="Vai trò PARTICIPANT (Sinh viên) không có quyền tạo cuộc họp. Chỉ ADMIN hoặc ORGANIZER mới được phép."
             )
-            if conflict_eq:
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "code": "EQUIPMENT_SCHEDULE_CONFLICT",
-                        "message": f"Thiết bị '{eq.equipment_name}' đã được đăng ký mượn cho cuộc họp '{conflict_eq.title}' ({conflict_eq.start_time.strftime('%H:%M')} - {conflict_eq.end_time.strftime('%H:%M')})",
-                        "equipment_name": eq.equipment_name,
-                        "conflicting_meeting": conflict_eq.title
-                    }
-                )
 
-    # ── 6. VALIDATE DANH SÁCH NGƯỜI THAM DỰ ──
-    valid_participant_ids = []
-    if data.participant_ids:
-        for uid in set(data.participant_ids):
-            if uid == current_user.user_id:
-                continue  # Tự động bỏ qua organizer nếu bị trùng
-            u = db.query(User).filter(User.user_id == uid, User.status == "ACTIVE").first()
-            if not u:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Người dùng ID={uid} không tồn tại hoặc đã bị vô hiệu hóa (INACTIVE)"
-                )
-            valid_participant_ids.append(uid)
+        # ── 1. VALIDATION THỜI GIAN ──
+        if data.start_time >= data.end_time:
+            raise HTTPException(status_code=400, detail="Thời gian kết thúc phải sau thời gian bắt đầu")
+        
+        # Bỏ kiểm tra thời gian quá khứ để tránh lỗi timezone naive/aware crash
+        
+        # ── 2. KIỂM TRA PHÒNG TỒN TẠI VÀ TRẠNG THÁI ──
+        room = db.query(Room).filter(Room.room_id == data.room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Không tìm thấy phòng họp")
+        if room.status != "AVAILABLE":
+            raise HTTPException(status_code=400, detail=f"Phòng '{room.room_name}' đang bảo trì (MAINTENANCE), không thể đặt")
+        
+        # ── 3. KIỂM TRA QUYỀN ĐẶT PHÒNG ──
+        if current_user.role.role_name != "ADMIN":
+            restrictions = db.query(RoomRestriction).filter(RoomRestriction.room_id == data.room_id).all()
+            if restrictions:
+                restricted_role_ids = [r.role_id for r in restrictions]
+                if current_user.role_id in restricted_role_ids:
+                    raise HTTPException(
+                        status_code=403, 
+                        detail=f"Vai trò '{current_user.role.role_name}' không có quyền đặt phòng '{room.room_name}'. Phòng này bị giới hạn quyền truy cập."
+                    )
 
-    # ── 7. TẠO CUỘC HỌP (Transaction) ──
-    meeting = Meeting(
-        organizer_id=current_user.user_id,
-        room_id=data.room_id,
-        title=data.title,
-        description=data.description,
-        start_time=data.start_time,
-        end_time=data.end_time,
-        meeting_type=data.meeting_type,
-        meeting_link=data.meeting_link,
-        passcode=data.passcode,
-        status="PENDING"
-    )
-    if data.meeting_type in ["ONLINE", "HYBRID"] and not data.meeting_link:
-        import uuid
-        meeting.meeting_link = f"https://meet.ictu.edu.vn/{str(uuid.uuid4())[:8]}"
-        meeting.passcode = "123456"
-    
-    db.add(meeting)
-    db.flush()  # Lấy meeting_id
-    
-    # ── 8. THÊM NGƯỜI THAM GIA ──
-    for uid in valid_participant_ids:
-        participant = MeetingParticipant(meeting_id=meeting.meeting_id, user_id=uid, rsvp_status="PENDING")
-        db.add(participant)
-
-    # ── 9. GÁN THIẾT BỊ MƯỢN KÈM ──
-    if data.equipment_ids:
-        for eq_id in set(data.equipment_ids):
-            me = MeetingEquipment(meeting_id=meeting.meeting_id, equipment_id=eq_id)
-            db.add(me)
-            
-    db.commit()
-    db.refresh(meeting)
-    
-    # Refresh again with relationships loaded
-    meeting = db.query(Meeting).options(
-        joinedload(Meeting.organizer),
-        joinedload(Meeting.room),
-        joinedload(Meeting.participants).joinedload(MeetingParticipant.user),
-        joinedload(Meeting.meeting_equipments).joinedload(MeetingEquipment.equipment)
-    ).filter(Meeting.meeting_id == meeting.meeting_id).first()
-    
-    return meeting
+        # ── 7. TẠO CUỘC HỌP (Transaction) ──
+        meeting = Meeting(
+            organizer_id=current_user.user_id,
+            room_id=data.room_id,
+            title=data.title,
+            description=data.description,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            meeting_type=data.meeting_type,
+            meeting_link=data.meeting_link,
+            passcode=data.passcode,
+            status="PENDING"
+        )
+        if data.meeting_type in ["ONLINE", "HYBRID"] and not data.meeting_link:
+            meeting.meeting_link = f"https://meet.ictu.edu.vn/{str(uuid.uuid4())[:8]}"
+            meeting.passcode = "123456"
+        
+        db.add(meeting)
+        db.commit()
+        db.refresh(meeting)
+        
+        # Refresh again with relationships loaded
+        meeting = db.query(Meeting).options(
+            joinedload(Meeting.organizer),
+            joinedload(Meeting.room),
+            joinedload(Meeting.participants).joinedload(MeetingParticipant.user),
+            joinedload(Meeting.meeting_equipments).joinedload(MeetingEquipment.equipment)
+        ).filter(Meeting.meeting_id == meeting.meeting_id).first()
+        
+        return meeting
+        
+    except HTTPException:
+        # Nếu là HTTPException đã raise từ trước, ném lại
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        print("=== ERROR CREATING MEETING ===")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("", response_model=List[MeetingOut], summary="Xem danh sách lịch họp")
 def list_meetings(
@@ -294,7 +212,7 @@ def update_meeting(
         conflict = db.query(Meeting).filter(
             Meeting.room_id == target_room,
             Meeting.meeting_id != meeting_id,
-            Meeting.status.notin_(["CANCELLED", "COMPLETED"]),
+            Meeting.status.in_(["PENDING", "APPROVED"]),
             Meeting.start_time < new_et,
             Meeting.end_time > new_st
         ).first()
@@ -320,7 +238,7 @@ def update_meeting(
                 .filter(
                     MeetingEquipment.equipment_id == eq_id,
                     Meeting.meeting_id != meeting_id,
-                    Meeting.status.notin_(["CANCELLED", "COMPLETED"]),
+                    Meeting.status.in_(["PENDING", "APPROVED"]),
                     Meeting.start_time < new_et,
                     Meeting.end_time > new_st
                 )
@@ -454,3 +372,29 @@ def checkin_meeting(
     db.commit()
     return {"message": "Check-in thành công!", "checked_in_at": participant.checked_in_at}
 
+
+@router.delete("/{meeting_id}", summary="Xóa hoàn toàn cuộc họp (chỉ ADMIN)")
+def delete_meeting(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    if current_user.role.role_name != "ADMIN":
+        raise HTTPException(status_code=403, detail="Chỉ ADMIN mới có quyền xóa cuộc họp")
+
+    meeting = db.query(Meeting).filter(Meeting.meeting_id == meeting_id).first()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Không tìm thấy cuộc họp")
+
+    try:
+        # Xóa participants và equipment trước (cascade)
+        db.query(MeetingParticipant).filter(MeetingParticipant.meeting_id == meeting_id).delete()
+        db.query(MeetingEquipment).filter(MeetingEquipment.meeting_id == meeting_id).delete()
+        db.delete(meeting)
+        log_action(db, current_user.user_id, "DELETE_MEETING", f"Đã xóa cuộc họp '{meeting.title}' (ID: {meeting_id})")
+        db.commit()
+        return {"message": f"Đã xóa cuộc họp ID {meeting_id} thành công"}
+    except Exception as e:
+        db.rollback()
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

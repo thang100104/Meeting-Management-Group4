@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Users, Calendar, Clock, X, Check, Monitor } from 'lucide-react';
+import { Search, MapPin, Users, Calendar, Clock, X, Check, Monitor, AlertTriangle } from 'lucide-react';
 import { getStorage, setStorage } from '../utils/syncHelper';
 
 import api from '../services/api';
@@ -11,133 +11,91 @@ interface Room {
   floor: string;
   capacity: number;
   type: string;
-  status: string;
+  status: string;      // 'Sẵn sàng' | 'Bảo trì'
   image: string;
   equipment: string[];
 }
 
+// Ảnh fallback theo index để mỗi phòng có hình khác nhau nếu DB chưa có image_url
 const presetImages = [
-  'https://images.unsplash.com/photo-1571624436279-b272aff752b5?auto=format&fit=crop&q=80&w=600', // Modern meeting room
-  'https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&q=80&w=600', // Hall / Auditorium
-  'https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&q=80&w=600', // Tech/PC room
-  'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&q=80&w=600', // Creative Space
-  'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&q=80&w=600', // Training
-  'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=600'  // Small Meeting room
+  'https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&q=80&w=600',
+  'https://images.unsplash.com/photo-1571624436279-b272aff752b5?auto=format&fit=crop&q=80&w=600',
+  'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&q=80&w=600',
+  'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=600',
+  'https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&q=80&w=600',
+  'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?auto=format&fit=crop&q=80&w=600',
 ];
-
-const mockRooms: Room[] = [
-  {
-    id: 'R01',
-    name: 'Phòng họp VIP A1',
-    building: 'Tòa A',
-    floor: 'Tầng 2',
-    capacity: 20,
-    type: 'VIP',
-    status: 'Sẵn sàng',
-    image: presetImages[0],
-    equipment: ['Máy chiếu 4K Sony', 'Bộ camera họp trực tuyến Logitech', 'Điều hòa trung tâm', 'Wifi 6 High-Speed'],
-  },
-  {
-    id: 'R02',
-    name: 'Phòng Hội trường B1',
-    building: 'Tòa B',
-    floor: 'Tầng 1',
-    capacity: 200,
-    type: 'Hội trường',
-    status: 'Sẵn sàng',
-    image: presetImages[1],
-    equipment: ['Máy chiếu 4K Sony', 'Loa hội trường JBL', 'Micro không dây Shure', 'Điều hòa trung tâm'],
-  },
-  {
-    id: 'R03',
-    name: 'Phòng Lab Máy tính B02',
-    building: 'Tòa Lab',
-    floor: 'Tầng 3',
-    capacity: 50,
-    type: 'Lab',
-    status: 'Sẵn sàng',
-    image: presetImages[2],
-    equipment: ['Laptop trình chiếu', 'Bảng tương tác thông minh', 'Điều hòa trung tâm', 'Wifi 6 High-Speed'],
-  },
-  {
-    id: 'R04',
-    name: 'Phòng Sáng tạo C3',
-    building: 'Tòa C',
-    floor: 'Tầng 4',
-    capacity: 10,
-    type: 'Creative',
-    status: 'Bảo trì',
-    image: presetImages[3],
-    equipment: ['Bảng tương tác thông minh', 'Wifi 6 High-Speed', 'Điều hòa trung tâm'],
-  },
-  {
-    id: 'R05',
-    name: 'Phòng Đào tạo A4',
-    building: 'Tòa A',
-    floor: 'Tầng 3',
-    capacity: 35,
-    type: 'Training',
-    status: 'Sẵn sàng',
-    image: presetImages[4],
-    equipment: ['Máy chiếu 4K Sony', 'Bảng tương tác thông minh', 'Điều hòa trung tâm'],
-  },
-  {
-    id: 'R06',
-    name: 'Phòng Họp Nhỏ C1',
-    building: 'Tòa C',
-    floor: 'Tầng 2',
-    capacity: 8,
-    type: 'Meeting',
-    status: 'Sẵn sàng',
-    image: presetImages[5],
-    equipment: ['Laptop trình chiếu', 'Wifi 6 High-Speed', 'Điều hòa trung tâm'],
-  }
-];
-
 
 export default function LecturerRoomBooking({ userProfile }: { userProfile: any }) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState(false);
 
+  // ─── Fetch danh sách phòng từ API (đồng bộ với Admin) ───────────────────────
   useEffect(() => {
     const fetchRooms = async () => {
       try {
         const res = await api.get('/rooms');
         if (res.data && res.data.length > 0) {
-          const mappedRooms: Room[] = res.data.map((r: any) => {
-            const locParts = r.location ? r.location.split(', ') : [];
-            const building = locParts.length > 1 ? locParts[1] : (r.location || 'Khác');
-            const floor = locParts.length > 1 ? locParts[0] : '';
+          const mappedRooms: Room[] = res.data.map((r: any, index: number) => {
+            // Parse location: "Tầng X Tòa Y" hoặc "Tầng X, Tòa Y"
+            const loc: string = r.location || '';
+            let floor = '';
+            let building = loc;
 
-            let mappedStatus = 'Sẵn sàng';
-            if (r.status === 'MAINTENANCE' || r.status === 'Đang bảo trì') {
-              mappedStatus = 'Bảo trì';
+            const commaParts = loc.split(',').map((s: string) => s.trim());
+            if (commaParts.length >= 2) {
+              // "Tầng 1, Tòa C1" => floor=Tầng 1, building=Tòa C1
+              floor = commaParts[0];
+              building = commaParts.slice(1).join(', ');
+            } else {
+              // "Tầng 1 Tòa C1" (không có dấu phẩy)
+              const spaceMatch = loc.match(/^(T[ầẩ]ng\s+\S+)\s+(.+)$/i);
+              if (spaceMatch) {
+                floor = spaceMatch[1];
+                building = spaceMatch[2];
+              }
             }
 
-            const eqps = r.description ? r.description.split(',').map((s: string) => s.trim()) : [];
+            // Map trạng thái API sang tiếng Việt
+            const mappedStatus = (r.status === 'MAINTENANCE' || r.status === 'Đang bảo trì')
+              ? 'Bảo trì'
+              : 'Sẵn sàng';
 
-            // Random image fallback
-            const img = 'https://images.unsplash.com/photo-1571624436279-b272aff752b5?auto=format&fit=crop&q=80&w=600';
+            // Parse danh sách thiết bị: ưu tiên equipments, sau đó description
+            let eqList: string[] = [];
+            if (r.equipments && r.equipments.trim()) {
+              eqList = r.equipments.split(',').map((s: string) => s.trim()).filter(Boolean);
+            } else if (r.description && r.description.trim()) {
+              eqList = r.description.split(',').map((s: string) => s.trim()).filter(Boolean);
+            }
+
+            // Ảnh: ưu tiên image_url từ DB, fallback theo index vòng tròn
+            const img = (r.image_url && r.image_url.trim())
+              ? r.image_url
+              : presetImages[index % presetImages.length];
 
             return {
-              id: r.room_id ? r.room_id.toString() : r.id,
-              name: r.room_name || r.name,
-              building: building,
+              id: r.room_id ? r.room_id.toString() : (r.id || String(index + 1)),
+              name: r.room_name || r.name || 'Phòng không tên',
+              building: building || 'Không xác định',
               floor: floor,
               capacity: r.capacity || 0,
               type: 'Phòng họp',
               status: mappedStatus,
               image: img,
-              equipment: eqps
+              equipment: eqList,
             };
           });
           setRooms(mappedRooms);
+          setApiError(false);
         } else {
-          setRooms(mockRooms);
+          setRooms([]);
         }
       } catch (err) {
         console.error('Lỗi khi lấy danh sách phòng:', err);
-        setRooms(mockRooms);
+        setApiError(true);
+        setRooms([]);
       } finally {
         setLoading(false);
       }
@@ -154,7 +112,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Lấy lịch họp để kiểm tra phòng nào đã bị đặt trong ca đã chọn
+  // ─── Lấy lịch họp để kiểm tra phòng nào đã bị đặt ──────────────────────────
   useEffect(() => {
     const fetchMeetings = async () => {
       try {
@@ -192,7 +150,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
   const [attendees, setAttendees] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Lấy danh sách tòa nhà tự động từ data Admin
+  // Lấy danh sách tòa nhà tự động từ dữ liệu API
   const buildings = ['Tất cả', ...Array.from(new Set(rooms.map(r => r.building)))];
 
   const filteredRooms = rooms.filter(room => {
@@ -206,7 +164,6 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
   const openBookingModal = (room: Room) => {
     setSelectedRoom(room);
     setIsModalOpen(true);
-    // Reset form
     setTitle('');
     setType('Họp bộ môn');
     setAttendees(room.capacity.toString());
@@ -225,9 +182,8 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
       const start_time = `${date}T${times[0]}:00`;
       const end_time = `${date}T${times[1]}:00`;
 
-      // Payload gửi lên API Backend
       const newBookingAPI = {
-        room_id: parseInt(selectedRoom.id) || 1, // Default to 1 if NaN for mock rooms
+        room_id: parseInt(selectedRoom.id) || 1,
         title,
         description: notes || '',
         start_time,
@@ -235,17 +191,13 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
         meeting_type: type
       };
 
-      try {
-        await api.post('/meetings', newBookingAPI);
-      } catch (err) {
-        console.warn('Backend API lỗi hoặc đang dùng mock data. Vẫn tiếp tục lưu vào Mock/LocalStorage', err);
-      }
+      await api.post('/meetings', newBookingAPI);
 
       const currentUserStr = localStorage.getItem('user') || sessionStorage.getItem('user') || '{}';
       let currentUser: any = {};
-      try { currentUser = JSON.parse(currentUserStr); } catch(e) {}
+      try { currentUser = JSON.parse(currentUserStr); } catch (e) { }
 
-      // XỬ LÝ LƯU LOCALSTORAGE (MOCK) ĐỂ SYNC BADGE BÊN SIDEBAR
+      // Lưu LocalStorage để sync Badge bên Sidebar
       const mockBooking = {
         id: Date.now().toString(),
         roomId: selectedRoom.id,
@@ -267,8 +219,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
 
       const savedRequests = localStorage.getItem('meetinghub_room_requests');
       let currentRequests = savedRequests ? JSON.parse(savedRequests) : [];
-      
-      // SỬA LẠI CÁC ĐƠN ĐÃ TẠO TRONG LOCALSTORAGE: Cập nhật đồng bộ avatar cũ
+
       currentRequests = currentRequests.map((req: any) => {
         if (req.lecturerEmail === mockBooking.userEmail || req.lecturerName === mockBooking.userName) {
           return { ...req, userAvatar: mockBooking.userAvatar, userName: mockBooking.userName, lecturerName: mockBooking.userName };
@@ -279,25 +230,26 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
       currentRequests.unshift(mockBooking);
       localStorage.setItem('meetinghub_room_requests', JSON.stringify(currentRequests));
 
-      // Trigger Event để LecturerDashboard cập nhật lại Badge (pendingRequestsCount)
       window.dispatchEvent(new Event('request-updated'));
       window.dispatchEvent(new Event('storage'));
 
       alert('Gửi yêu cầu đặt phòng thành công! Vui lòng chờ Admin phê duyệt.');
       setIsModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Lỗi khi đặt phòng:', error);
-      alert('Đã xảy ra lỗi khi gửi yêu cầu. Vui lòng thử lại!');
+      const backendError = error.response?.data?.detail || error.message;
+      alert(`Đã xảy ra lỗi khi gửi yêu cầu: ${backendError}`);
     }
   };
 
+  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-8 pb-12 font-sans antialiased">
 
       {/* Header */}
       <div className="flex justify-between items-end">
         <div>
-          <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight mb-2">Đăng ký phòng họp & Giảng đường</h2>
+          <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight mb-2">Đăng ký phòng họp &amp; Giảng đường</h2>
           <p className="text-slate-500 text-base font-medium">Tra cứu và đặt lịch sử dụng các không gian trong trường.</p>
         </div>
       </div>
@@ -371,76 +323,103 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
 
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-500 font-medium">Đang tải danh sách phòng...</p>
+        </div>
+      )}
+
+      {/* Error State */}
+      {!loading && apiError && (
+        <div style={{ padding: '40px', textAlign: 'center', backgroundColor: '#fff7ed', borderRadius: '24px', border: '1px solid #fed7aa' }}>
+          <AlertTriangle size={48} color="#f97316" style={{ margin: '0 auto 16px auto' }} />
+          <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#9a3412', margin: '0 0 8px 0' }}>Không thể kết nối với máy chủ</h3>
+          <p style={{ color: '#ea580c', margin: 0 }}>Vui lòng kiểm tra kết nối mạng hoặc thử lại sau.</p>
+        </div>
+      )}
+
       {/* Room Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-        {filteredRooms.map(room => {
-          const isMaintenance = room.status === 'Bảo trì';
-          const isBooked = bookedRoomIds.includes(room.id);
-          const isAvailable = !isMaintenance && !isBooked;
+      {!loading && !apiError && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+          {filteredRooms.map(room => {
+            const isMaintenance = room.status === 'Bảo trì';
+            const isBooked = bookedRoomIds.includes(room.id);
+            const isAvailable = !isMaintenance && !isBooked;
 
-          return (
-            <div key={room.id} className="group bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col overflow-hidden">
-              {/* Image & Status Badge */}
-              <div className="h-52 lg:h-56 relative overflow-hidden">
-                <img src={room.image} alt={room.name} className="w-full h-full object-cover group-hover:scale-105 duration-500 transition-transform" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
+            return (
+              <div key={room.id} className="group bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col overflow-hidden">
+                {/* Image & Status Badge */}
+                <div className="h-52 lg:h-56 relative overflow-hidden">
+                  <img
+                    src={room.image}
+                    alt={room.name}
+                    className="w-full h-full object-cover group-hover:scale-105 duration-500 transition-transform"
+                    onError={(e) => { e.currentTarget.src = presetImages[0]; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
 
-                <div className="absolute top-4 right-4 flex gap-2">
-                  {isAvailable ? (
-                    <span className="bg-emerald-500 text-white rounded-full px-3 py-1 text-xs font-bold flex items-center gap-1 shadow-md">
-                      <Check size={14} /> Sẵn sàng
-                    </span>
-                  ) : isMaintenance ? (
-                    <span className="bg-orange-500 text-white rounded-full px-3 py-1 text-xs font-bold flex items-center gap-1 shadow-md">
-                      <X size={14} /> Bảo trì
-                    </span>
-                  ) : (
-                    <span className="bg-blue-600 text-white rounded-full px-3 py-1 text-xs font-bold flex items-center gap-1 shadow-md">
-                      <Clock size={14} /> Đang họp
-                    </span>
-                  )}
+                  <div className="absolute top-4 right-4 flex gap-2">
+                    {isAvailable ? (
+                      <span className="bg-emerald-500 text-white rounded-full px-3 py-1 text-xs font-bold flex items-center gap-1 shadow-md">
+                        <Check size={14} /> Sẵn sàng
+                      </span>
+                    ) : isMaintenance ? (
+                      <span className="bg-orange-500 text-white rounded-full px-3 py-1 text-xs font-bold flex items-center gap-1 shadow-md">
+                        <AlertTriangle size={14} /> Bảo trì
+                      </span>
+                    ) : (
+                      <span className="bg-blue-600 text-white rounded-full px-3 py-1 text-xs font-bold flex items-center gap-1 shadow-md">
+                        <Clock size={14} /> Đang họp
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="absolute bottom-4 left-4 right-4 text-white">
+                    <h3 className="text-xl font-bold text-white group-hover:text-blue-300 transition-colors mb-1">{room.name}</h3>
+                    <div className="flex items-center gap-4 text-slate-200 text-sm font-medium">
+                      <span className="flex items-center gap-1.5"><MapPin size={16} /> {room.building}{room.floor ? ` - ${room.floor}` : ''}</span>
+                      <span className="flex items-center gap-1.5"><Users size={16} /> {room.capacity} chỗ</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="absolute bottom-4 left-4 right-4 text-white">
-                  <h3 className="text-xl font-bold text-white group-hover:text-blue-300 transition-colors mb-1">{room.name}</h3>
-                  <div className="flex items-center gap-4 text-slate-200 text-sm font-medium">
-                    <span className="flex items-center gap-1.5"><MapPin size={16} /> {room.building} - {room.floor}</span>
-                    <span className="flex items-center gap-1.5"><Users size={16} /> {room.capacity} chỗ</span>
+                {/* Content & Action */}
+                <div className="p-6 flex flex-col flex-1">
+
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {room.equipment.length > 0 ? room.equipment.map((item, i) => (
+                      <span key={i} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                        <Monitor size={12} className="text-slate-500" />
+                        {item}
+                      </span>
+                    )) : (
+                      <span className="text-slate-400 text-xs italic">Chưa có thông tin thiết bị</span>
+                    )}
+                  </div>
+
+                  <div className="mt-auto">
+                    <button
+                      onClick={() => openBookingModal(room)}
+                      disabled={!isAvailable}
+                      className={`w-full py-3.5 flex items-center justify-center gap-2 rounded-xl font-bold text-sm transition-all ${isAvailable
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 active:scale-95'
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                        }`}
+                    >
+                      <Calendar size={18} />
+                      {isAvailable ? 'Đặt phòng này' : isMaintenance ? 'Đang bảo trì' : 'Đang họp'}
+                    </button>
                   </div>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {/* Content & Action */}
-              <div className="p-6 flex flex-col flex-1">
-
-                <div className="flex flex-wrap gap-2 mb-6">
-                  {room.equipment.map((item, i) => (
-                    <span key={i} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5">
-                      {item}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="mt-auto">
-                  <button
-                    onClick={() => openBookingModal(room)}
-                    disabled={!isAvailable}
-                    className={`w-full py-3.5 flex items-center justify-center gap-2 rounded-xl font-bold text-sm transition-all ${isAvailable
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 active:scale-95'
-                      : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                      }`}
-                  >
-                    <Calendar size={18} />
-                    {isAvailable ? 'Đặt phòng này' : isMaintenance ? 'Đang bảo trì' : 'Đang họp'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {filteredRooms.length === 0 && (
+      {!loading && !apiError && filteredRooms.length === 0 && (
         <div style={{ padding: '60px', textAlign: 'center', backgroundColor: 'white', borderRadius: '24px', border: '1px solid #e2e8f0' }}>
           <Search size={48} color="#cbd5e1" style={{ margin: '0 auto 16px auto' }} />
           <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#0f172a', margin: '0 0 8px 0' }}>Không tìm thấy phòng phù hợp</h3>

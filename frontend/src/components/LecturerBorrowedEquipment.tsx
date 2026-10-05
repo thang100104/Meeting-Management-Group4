@@ -51,7 +51,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
   const loadBorrowedItems = () => {
     const saved = localStorage.getItem('meetinghub_borrowed_items');
     const userEmail = userProfile?.email;
-    
+
     let allItems: BorrowedItem[] = saved ? JSON.parse(saved) : [];
     let myItems = allItems.filter(item => item.lecturerEmail === userEmail);
 
@@ -134,7 +134,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
   const filteredItems = borrowedItems.filter(item => {
     if (filterOverdueOnly && (!item.isOverdue || item.status !== 'Đang mượn')) return false;
     if (!filterOverdueOnly && item.status !== activeTab) return false;
-    
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       if (!item.equipmentName.toLowerCase().includes(q) && !item.equipmentCode.toLowerCase().includes(q)) return false;
@@ -156,7 +156,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
     const saved = localStorage.getItem('meetinghub_borrowed_items');
     if (saved) {
       const allItems: BorrowedItem[] = JSON.parse(saved);
-      const updated = allItems.map(item => 
+      const updated = allItems.map(item =>
         item.id === selectedItem.id ? { ...item, status: 'Đã trả' as const, actualReturnDate: new Date().toISOString() } : item
       );
       localStorage.setItem('meetinghub_borrowed_items', JSON.stringify(updated));
@@ -164,7 +164,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
 
     alert(`Đã báo trả [${selectedItem.equipmentName}] thành công!`);
     setIsReturnModalOpen(false);
-    
+
     window.dispatchEvent(new Event('borrowedEquipmentsUpdated'));
   };
 
@@ -182,7 +182,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
 
     const savedReports = localStorage.getItem('meetinghub_incident_reports');
     const reports = savedReports ? JSON.parse(savedReports) : [];
-    
+
     reports.push({
       id: 'INC_' + Date.now(),
       equipmentCode: selectedReportItem.equipmentCode,
@@ -194,7 +194,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
       reportedAt: new Date().toISOString(),
       lecturerEmail: userProfile?.email || ''
     });
-    
+
     localStorage.setItem('meetinghub_incident_reports', JSON.stringify(reports));
 
     alert('Đã gửi báo cáo sự cố thành công! Ban quản lý sẽ liên hệ hỗ trợ.');
@@ -213,7 +213,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
 
   return (
     <div className="flex flex-col gap-8 pb-12 font-sans antialiased">
-      
+
       {/* Header */}
       <div>
         <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight mb-2">Thiết bị đang mượn</h2>
@@ -231,15 +231,15 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
           </div>
           <div className="flex gap-2">
             {!filterOverdueOnly ? (
-              <button 
-                onClick={() => setFilterOverdueOnly(true)} 
+              <button
+                onClick={() => setFilterOverdueOnly(true)}
                 className="bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300 py-2 px-4 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 shadow-sm"
               >
                 Xem thiết bị quá hạn
               </button>
             ) : (
-              <button 
-                onClick={() => setFilterOverdueOnly(false)} 
+              <button
+                onClick={() => setFilterOverdueOnly(false)}
                 className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 py-2 px-4 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 shadow-sm"
               >
                 Hiện tất cả
@@ -251,18 +251,17 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
 
       {/* Filter & Search */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-wrap justify-between gap-6 items-center">
-        
+
         {/* Tabs */}
         <div className="flex gap-2 overflow-x-auto pb-1">
           {['Đang mượn', 'Đã trả'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
-              className={`px-5 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${
-                activeTab === tab 
-                  ? 'bg-slate-800 text-white shadow-md' 
+              className={`px-5 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-all ${activeTab === tab
+                  ? 'bg-slate-800 text-white shadow-md'
                   : 'bg-slate-50 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
-              }`}
+                }`}
             >
               {tab}
             </button>
@@ -312,13 +311,13 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
 
             {item.status === 'Đang mượn' && (
               <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-100 mt-auto">
-                <button 
+                <button
                   onClick={() => openReturnModal(item)}
                   className="bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-xl text-xs font-bold transition-all"
                 >
                   Báo trả thiết bị
                 </button>
-                <button 
+                <button
                   onClick={() => handleReportIssue(item)}
                   className="border border-slate-200 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
                 >
@@ -344,7 +343,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
       {isReturnModalOpen && selectedItem && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            
+
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#0f172a', margin: '0 0 4px 0' }}>Xác nhận trả thiết bị</h3>
@@ -356,29 +355,29 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
             </div>
 
             <form onSubmit={handleReturnSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
+
               <div style={{ backgroundColor: '#eff6ff', padding: '16px', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
                 <div style={{ fontSize: '13px', color: '#3b82f6', marginBottom: '4px' }}>Mã thiết bị: <strong>{selectedItem.equipmentCode}</strong></div>
                 <div style={{ fontSize: '13px', color: '#3b82f6' }}>Vị trí sử dụng: <strong>{selectedItem.location}</strong></div>
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Tình trạng khi trả <span style={{color: '#ef4444'}}>*</span></label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Tình trạng khi trả <span style={{ color: '#ef4444' }}>*</span></label>
                 <div style={{ display: 'flex', gap: '12px' }}>
                   {['Mới/Tốt', 'Hỏng hóc nhẹ', 'Thiếu phụ kiện'].map(cond => (
                     <label key={cond} style={{ flex: 1, cursor: 'pointer' }}>
-                      <input 
-                        type="radio" 
-                        name="condition" 
-                        value={cond} 
+                      <input
+                        type="radio"
+                        name="condition"
+                        value={cond}
                         checked={condition === cond}
                         onChange={(e) => setCondition(e.target.value)}
                         style={{ display: 'none' }}
                       />
-                      <div style={{ 
-                        padding: '12px', 
+                      <div style={{
+                        padding: '12px',
                         textAlign: 'center',
-                        borderRadius: '12px', 
+                        borderRadius: '12px',
                         border: condition === cond ? '2px solid #3b82f6' : '1px solid #cbd5e1',
                         backgroundColor: condition === cond ? '#eff6ff' : 'white',
                         color: condition === cond ? '#1d4ed8' : '#475569',
@@ -395,7 +394,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
 
               <div>
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Ghi chú thêm (Không bắt buộc)</label>
-                <textarea 
+                <textarea
                   value={returnNotes}
                   onChange={(e) => setReturnNotes(e.target.value)}
                   placeholder="Ghi chú về tình trạng thiết bị..."
@@ -416,11 +415,11 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
           </div>
         </div>
       )}
-    {/* Report Modal */}
+      {/* Report Modal */}
       {isReportModalOpen && selectedReportItem && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
           <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            
+
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#0f172a', margin: '0 0 4px 0' }}>Báo cáo sự cố</h3>
@@ -432,15 +431,15 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
             </div>
 
             <form onSubmit={handleReportSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
+
               <div style={{ backgroundColor: '#fff1f2', padding: '16px', borderRadius: '12px', border: '1px solid #fecdd3' }}>
                 <div style={{ fontSize: '13px', color: '#e11d48', marginBottom: '4px' }}>Mã thiết bị: <strong>{selectedReportItem.equipmentCode}</strong></div>
                 <div style={{ fontSize: '14px', color: '#be123c', fontWeight: 'bold' }}>{selectedReportItem.equipmentName}</div>
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Loại sự cố <span style={{color: '#ef4444'}}>*</span></label>
-                <select 
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Loại sự cố <span style={{ color: '#ef4444' }}>*</span></label>
+                <select
                   value={incidentType}
                   onChange={(e) => setIncidentType(e.target.value)}
                   style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '14px', outline: 'none' }}
@@ -455,22 +454,22 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Mức độ <span style={{color: '#ef4444'}}>*</span></label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Mức độ <span style={{ color: '#ef4444' }}>*</span></label>
                 <div style={{ display: 'flex', gap: '12px' }}>
                   {['Nghiêm trọng', 'Trung bình', 'Nhẹ'].map(sev => (
                     <label key={sev} style={{ flex: 1, cursor: 'pointer' }}>
-                      <input 
-                        type="radio" 
-                        name="severity" 
-                        value={sev} 
+                      <input
+                        type="radio"
+                        name="severity"
+                        value={sev}
                         checked={incidentSeverity === sev}
                         onChange={(e) => setIncidentSeverity(e.target.value)}
                         style={{ display: 'none' }}
                       />
-                      <div style={{ 
-                        padding: '10px', 
+                      <div style={{
+                        padding: '10px',
                         textAlign: 'center',
-                        borderRadius: '10px', 
+                        borderRadius: '10px',
                         border: incidentSeverity === sev ? '2px solid #e11d48' : '1px solid #cbd5e1',
                         backgroundColor: incidentSeverity === sev ? '#fff1f2' : 'white',
                         color: incidentSeverity === sev ? '#be123c' : '#475569',
@@ -486,8 +485,8 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Mô tả chi tiết <span style={{color: '#ef4444'}}>*</span></label>
-                <textarea 
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Mô tả chi tiết <span style={{ color: '#ef4444' }}>*</span></label>
+                <textarea
                   value={incidentDesc}
                   onChange={(e) => setIncidentDesc(e.target.value)}
                   placeholder="Mô tả cụ thể tình trạng sự cố..."

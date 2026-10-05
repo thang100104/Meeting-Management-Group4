@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+﻿from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.core.database import Base
@@ -24,6 +24,7 @@ class Equipment(Base):
     # Relationships
     room = relationship("Room", backref="fixed_equipments")
     meeting_links = relationship("MeetingEquipment", back_populates="equipment", cascade="all, delete-orphan")
+    borrow_requests = relationship("EquipmentBorrowRequest", back_populates="equipment", cascade="all, delete-orphan")
 
 
 class MeetingEquipment(Base):
@@ -42,3 +43,22 @@ class MeetingEquipment(Base):
     # Relationships
     meeting = relationship("Meeting", back_populates="meeting_equipments")
     equipment = relationship("Equipment", back_populates="meeting_links")
+
+
+class EquipmentBorrowRequest(Base):
+    __tablename__ = "equipment_borrow_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requester_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    equipment_id = Column(Integer, ForeignKey("equipments.equipment_id", ondelete="CASCADE"), nullable=False, index=True)
+    quantity = Column(Integer, default=1)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+    use_location = Column(String(255), nullable=True)
+    reason = Column(Text, nullable=True)
+    status = Column(String(20), default="PENDING", index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    requester = relationship("User", foreign_keys=[requester_id])
+    equipment = relationship("Equipment", back_populates="borrow_requests")

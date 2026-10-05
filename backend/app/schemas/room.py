@@ -26,6 +26,8 @@ class RoomBase(BaseModel):
     location: str = Field(..., example="Tầng 1, Tòa nhà C1")
     status: Optional[str] = Field("AVAILABLE", example="AVAILABLE", description="AVAILABLE hoặc MAINTENANCE")
     description: Optional[str] = Field(None, example="Trang bị máy chiếu, điều hòa, hệ thống âm thanh")
+    image_url: Optional[str] = Field(None, description="URL ảnh đại diện của phòng")
+    equipments: Optional[str] = Field(None, description="Danh sách thiết bị, phân tách bời dấu phẩy")
 
 class RoomCreate(RoomBase):
     pass
@@ -36,6 +38,8 @@ class RoomUpdate(BaseModel):
     location: Optional[str] = None
     status: Optional[str] = None
     description: Optional[str] = None
+    image_url: Optional[str] = None
+    equipments: Optional[str] = None
 
 class RoomOut(RoomBase):
     room_id: int

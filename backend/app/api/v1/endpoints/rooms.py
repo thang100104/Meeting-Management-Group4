@@ -75,7 +75,9 @@ def create_room(
         capacity=data.capacity,
         location=data.location,
         status=data.status or "AVAILABLE",
-        description=data.description
+        description=data.description,
+        image_url=data.image_url,
+        equipments=data.equipments
     )
     db.add(room)
     db.commit()
@@ -121,6 +123,10 @@ def update_room(
         room.status = data.status
     if data.description is not None:
         room.description = data.description
+    if data.image_url is not None:
+        room.image_url = data.image_url
+    if data.equipments is not None:
+        room.equipments = data.equipments
 
     db.commit()
     db.refresh(room)
