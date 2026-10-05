@@ -1,4 +1,4 @@
-﻿from typing import List, Optional
+from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.equipment import Equipment, EquipmentBorrowRequest
 from app.models.user import User
+from app.models.audit import AuditLog
 from app.schemas.equipment_borrow import (
     EquipmentBorrowRequestCreate,
     EquipmentBorrowRequestUpdate,
@@ -123,6 +124,50 @@ def approved_borrow_requests(
     return [_to_out(r) for r in requests]
 
 
+@router.patch("/{req_id}/approve", response_model=EquipmentBorrowRequestOut,
+              summary="Admin phê duyệt yêu cầu mượn thiết bị")
+def approve_borrow_request(
+    req_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    if not current_user.role or current_user.role.role_name != "ADMIN":
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên (ADMIN) mới có quyền phê duyệt mượn thiết bị")
+
+    req = db.query(EquipmentBorrowRequest).filter(EquipmentBorrowRequest.id == req_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu mượn thiết bị")
+
+    req.status = "APPROVED"
+    db.add(AuditLog(user_id=current_user.user_id, action="APPROVE_EQUIPMENT_REQUEST", details=f"Admin duyệt yêu cầu mượn thiết bị ID {req.id} ({req.equipment.equipment_name if req.equipment else req.equipment_id})"))
+    db.commit()
+    db.refresh(req)
+    return _to_out(req)
+
+
+@router.patch("/{req_id}/reject", response_model=EquipmentBorrowRequestOut,
+              summary="Admin từ chối yêu cầu mượn thiết bị")
+def reject_borrow_request(
+    req_id: int,
+    reason: Optional[str] = Query(None, description="Lý do từ chối"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    if not current_user.role or current_user.role.role_name != "ADMIN":
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên (ADMIN) mới có quyền từ chối yêu cầu mượn thiết bị")
+
+    req = db.query(EquipmentBorrowRequest).filter(EquipmentBorrowRequest.id == req_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu mượn thiết bị")
+
+    req.status = "REJECTED"
+    reason_text = f" (Lý do: {reason})" if reason else ""
+    db.add(AuditLog(user_id=current_user.user_id, action="REJECT_EQUIPMENT_REQUEST", details=f"Admin từ chối yêu cầu mượn thiết bị ID {req.id}{reason_text}"))
+    db.commit()
+    db.refresh(req)
+    return _to_out(req)
+
+
 @router.patch("/{req_id}/status", response_model=EquipmentBorrowRequestOut,
               summary="Admin duyet / tu choi yeu cau muon thiet bi")
 def update_borrow_status(
@@ -132,7 +177,8 @@ def update_borrow_status(
     current_user: User = Depends(get_current_active_user),
 ):
     allowed = ["APPROVED", "REJECTED", "RETURNED", "PENDING"]
-    if data.status.upper() not in allowed:
+    new_status = data.status.upper()
+    if new_status not in allowed:
         raise HTTPException(status_code=400, detail=f"Trang thai khong hop le. Cho phep: {allowed}")
 
     req = db.query(EquipmentBorrowRequest).filter(EquipmentBorrowRequest.id == req_id).first()
@@ -141,12 +187,13 @@ def update_borrow_status(
 
     # Chi Admin moi duoc Approve/Reject; Lecturer chi duoc bao tra (RETURNED)
     if current_user.role and current_user.role.role_name != "ADMIN":
-        if data.status.upper() not in ["RETURNED"]:
+        if new_status not in ["RETURNED"]:
             raise HTTPException(status_code=403, detail="Chi Admin moi co quyen duyet / tu choi yeu cau")
         if req.requester_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="Ban khong co quyen cap nhat yeu cau nay")
 
-    req.status = data.status.upper()
+    req.status = new_status
+    db.add(AuditLog(user_id=current_user.user_id, action="UPDATE_EQUIPMENT_REQUEST_STATUS", details=f"Cập nhật yêu cầu mượn thiết bị ID {req.id} thành {new_status}"))
     db.commit()
     db.refresh(req)
     return _to_out(req)

@@ -43,8 +43,14 @@ class MeetingUpdate(BaseModel):
 class MeetingRespond(BaseModel):
     status: str # ACCEPTED or DECLINED
 
+class MeetingApprovalRequest(BaseModel):
+    note: Optional[str] = None
+
+class MeetingRejectRequest(BaseModel):
+    reason: Optional[str] = None
+
 class MeetingStatusUpdate(BaseModel):
-    status: str # IN_PROGRESS, COMPLETED, CANCELLED
+    status: str # PENDING, SCHEDULED, APPROVED, IN_PROGRESS, COMPLETED, CANCELLED, REJECTED
 
 class MeetingOut(BaseModel):
     meeting_id: int

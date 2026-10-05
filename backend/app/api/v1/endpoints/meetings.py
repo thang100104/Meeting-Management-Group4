@@ -8,7 +8,10 @@ from app.models.meeting import Meeting, MeetingParticipant
 from app.models.equipment import Equipment, MeetingEquipment
 from app.models.room import Room, RoomRestriction
 from app.models.user import User
-from app.schemas.meeting import MeetingCreate, MeetingUpdate, MeetingOut, MeetingRespond, RoomAvailability, MeetingStatusUpdate
+from app.schemas.meeting import (
+    MeetingCreate, MeetingUpdate, MeetingOut, MeetingRespond, 
+    RoomAvailability, MeetingStatusUpdate, MeetingApprovalRequest, MeetingRejectRequest
+)
 from app.api.deps import get_current_active_user, require_roles
 from app.models.audit import AuditLog
 import uuid
@@ -189,9 +192,10 @@ def create_meeting(
 @router.get("", response_model=List[MeetingOut], summary="Xem danh sách lịch họp")
 def list_meetings(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=200),
     room_id: Optional[int] = None,
     user_id: Optional[int] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     db: Session = Depends(get_db),
@@ -210,12 +214,14 @@ def list_meetings(
         query = query.join(MeetingParticipant, isouter=True).filter(
             or_(Meeting.organizer_id == user_id, MeetingParticipant.user_id == user_id)
         )
+    if status_filter:
+        query = query.filter(Meeting.status == status_filter.upper())
     if from_date:
         query = query.filter(Meeting.start_time >= datetime.combine(from_date, datetime.min.time()))
     if to_date:
         query = query.filter(Meeting.end_time <= datetime.combine(to_date, datetime.max.time()))
         
-    meetings = query.order_by(Meeting.start_time.asc()).offset(skip).limit(limit).all()
+    meetings = query.order_by(Meeting.start_time.desc() if status_filter else Meeting.start_time.asc()).offset(skip).limit(limit).all()
     return meetings
 
 @router.get("/{meeting_id}", response_model=MeetingOut, summary="Xem chi tiết cuộc họp")
@@ -371,6 +377,101 @@ def respond_meeting(
     db.commit()
     return {"message": f"Bạn đã {data.status} lời mời"}
 
+@router.patch("/{meeting_id}/approve", response_model=MeetingOut, summary="Admin phê duyệt yêu cầu đặt phòng họp")
+def approve_meeting(
+    meeting_id: int,
+    data: Optional[MeetingApprovalRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    if not current_user.role or current_user.role.role_name != "ADMIN":
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên (ADMIN) mới có quyền phê duyệt đặt phòng")
+        
+    meeting = db.query(Meeting).options(
+        joinedload(Meeting.organizer),
+        joinedload(Meeting.room),
+        joinedload(Meeting.participants).joinedload(MeetingParticipant.user),
+        joinedload(Meeting.meeting_equipments).joinedload(MeetingEquipment.equipment)
+    ).filter(Meeting.meeting_id == meeting_id).first()
+    
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lịch họp cần phê duyệt")
+
+    # Kiểm tra trùng lịch phòng với các cuộc họp đã duyệt khác
+    conflict = db.query(Meeting).filter(
+        Meeting.room_id == meeting.room_id,
+        Meeting.meeting_id != meeting.meeting_id,
+        Meeting.status.in_(["SCHEDULED", "APPROVED", "IN_PROGRESS"]),
+        Meeting.start_time < meeting.end_time,
+        Meeting.end_time > meeting.start_time
+    ).first()
+    
+    if conflict:
+        room_title = meeting.room.room_name if meeting.room else str(meeting.room_id)
+        raise HTTPException(
+            status_code=409, 
+            detail=f"Trùng lịch phòng! Phòng '{room_title}' đã có cuộc họp '{conflict.title}' ({conflict.start_time.strftime('%H:%M')} - {conflict.end_time.strftime('%H:%M')}) được duyệt trước đó."
+        )
+
+    # Kiểm tra trùng lịch thiết bị kèm theo
+    if meeting.meeting_equipments:
+        for me in meeting.meeting_equipments:
+            eq_id = me.equipment_id
+            conflict_eq = (
+                db.query(Meeting)
+                .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
+                .filter(
+                    MeetingEquipment.equipment_id == eq_id,
+                    Meeting.meeting_id != meeting.meeting_id,
+                    Meeting.status.in_(["SCHEDULED", "APPROVED", "IN_PROGRESS"]),
+                    Meeting.start_time < meeting.end_time,
+                    Meeting.end_time > meeting.start_time
+                )
+                .first()
+            )
+            if conflict_eq:
+                eq_name = me.equipment.equipment_name if me.equipment else f"ID {eq_id}"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Trùng thiết bị! Thiết bị '{eq_name}' đã được duyệt sử dụng cho cuộc họp '{conflict_eq.title}'."
+                )
+
+    meeting.status = "SCHEDULED"
+    note_text = f" - Ghi chú: {data.note}" if (data and data.note) else ""
+    log_action(db, current_user.user_id, "APPROVE_MEETING", f"Admin duyệt yêu cầu đặt phòng cho cuộc họp '{meeting.title}' (ID: {meeting.meeting_id}){note_text}")
+    db.commit()
+    db.refresh(meeting)
+    return meeting
+
+
+@router.patch("/{meeting_id}/reject", response_model=MeetingOut, summary="Admin từ chối yêu cầu đặt phòng họp")
+def reject_meeting(
+    meeting_id: int,
+    data: Optional[MeetingRejectRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    if not current_user.role or current_user.role.role_name != "ADMIN":
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên (ADMIN) mới có quyền từ chối yêu cầu đặt phòng")
+
+    meeting = db.query(Meeting).options(
+        joinedload(Meeting.organizer),
+        joinedload(Meeting.room),
+        joinedload(Meeting.participants).joinedload(MeetingParticipant.user),
+        joinedload(Meeting.meeting_equipments).joinedload(MeetingEquipment.equipment)
+    ).filter(Meeting.meeting_id == meeting_id).first()
+
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lịch họp cần từ chối")
+
+    meeting.status = "REJECTED"
+    reason_text = f" (Lý do: {data.reason})" if (data and data.reason) else ""
+    log_action(db, current_user.user_id, "REJECT_MEETING", f"Admin từ chối cuộc họp '{meeting.title}' (ID: {meeting.meeting_id}){reason_text}")
+    db.commit()
+    db.refresh(meeting)
+    return meeting
+
+
 @router.patch("/{meeting_id}/status", summary="Cập nhật trạng thái vòng đời cuộc họp (Meeting Lifecycle)")
 def update_meeting_status(
     meeting_id: int,
@@ -378,22 +479,22 @@ def update_meeting_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    valid_statuses = ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
-    if data.status not in valid_statuses:
-        raise HTTPException(status_code=400, detail="Trạng thái không hợp lệ")
+    valid_statuses = ["PENDING", "SCHEDULED", "APPROVED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "REJECTED"]
+    if data.status.upper() not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Trạng thái không hợp lệ. Cho phép: {valid_statuses}")
 
     meeting = db.query(Meeting).filter(Meeting.meeting_id == meeting_id).first()
     if not meeting:
         raise HTTPException(status_code=404, detail="Không tìm thấy lịch họp")
         
-    if meeting.organizer_id != current_user.user_id and current_user.role.role_name != "ADMIN":
+    if meeting.organizer_id != current_user.user_id and (not current_user.role or current_user.role.role_name != "ADMIN"):
         raise HTTPException(status_code=403, detail="Bạn không có quyền cập nhật trạng thái cuộc họp này")
         
-    meeting.status = data.status
-    log_action(db, current_user.user_id, "UPDATE_MEETING_STATUS", f"Cập nhật trạng thái cuộc họp '{meeting.title}' thành {data.status}")
+    meeting.status = data.status.upper()
+    log_action(db, current_user.user_id, "UPDATE_MEETING_STATUS", f"Cập nhật trạng thái cuộc họp '{meeting.title}' thành {meeting.status}")
     db.commit()
     
-    return {"message": f"Đã cập nhật trạng thái thành {data.status}"}
+    return {"message": f"Đã cập nhật trạng thái thành {meeting.status}"}
 
 @router.post("/{meeting_id}/checkin", summary="Check-in điểm danh qua mã QR")
 def checkin_meeting(

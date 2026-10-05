@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckSquare, MonitorSpeaker, Activity, ShieldCheck, Server } from 'lucide-react';
+import api from '../services/api';
 
 export default function DashboardView() {
   const navigate = useNavigate();
@@ -26,14 +27,33 @@ export default function DashboardView() {
     }
   };
 
-  const loadDashboardData = () => {
+  const loadDashboardData = async () => {
+    let count = 0;
     try {
+      const [meetingsRes, eqRes] = await Promise.allSettled([
+        api.get('/meetings?status=PENDING'),
+        api.get('/equipment-requests?status=PENDING')
+      ]);
+
+      if (meetingsRes.status === 'fulfilled' && Array.isArray(meetingsRes.value?.data)) {
+        count += meetingsRes.value.data.filter((m: any) => m.status === 'PENDING').length;
+      }
+      if (eqRes.status === 'fulfilled' && Array.isArray(eqRes.value?.data)) {
+        count += eqRes.value.data.filter((e: any) => e.status === 'PENDING').length;
+      }
+
       const saved = localStorage.getItem('meetinghub_room_requests');
       if (saved) {
-        const parsed = JSON.parse(saved);
-        const pending = parsed.filter((r: any) => r.status === 'Chờ duyệt' || r.status === 'pending').length;
-        setPendingRequestsCount(pending);
+        try {
+          const parsed = JSON.parse(saved);
+          const localOnly = parsed.filter((r: any) => 
+            (r.status === 'Chờ duyệt' || r.status === 'pending') &&
+            typeof r.id === 'string' && !/^\d+$/.test(r.id)
+          ).length;
+          count += localOnly;
+        } catch (e) {}
       }
+      setPendingRequestsCount(count);
     } catch(e) {}
   };
 

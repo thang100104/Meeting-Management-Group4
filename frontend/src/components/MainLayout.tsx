@@ -8,6 +8,7 @@ import {
 import ChatbotWidget from './ChatbotWidget';
 import { NotificationDropdown } from './NotificationDropdown';
 import { useAuth } from '../context/AuthContext';
+import api from '../services/api';
 
 export default function MainLayout() {
   const navigate = useNavigate();
@@ -34,18 +35,38 @@ export default function MainLayout() {
 
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
-  const updatePendingCount = () => {
+  const updatePendingCount = async () => {
+    let count = 0;
     try {
+      // 1. Fetch live from backend APIs
+      const [meetingsRes, eqRes] = await Promise.allSettled([
+        api.get('/meetings?status=PENDING'),
+        api.get('/equipment-requests?status=PENDING')
+      ]);
+
+      if (meetingsRes.status === 'fulfilled' && Array.isArray(meetingsRes.value?.data)) {
+        count += meetingsRes.value.data.filter((m: any) => m.status === 'PENDING').length;
+      }
+      if (eqRes.status === 'fulfilled' && Array.isArray(eqRes.value?.data)) {
+        count += eqRes.value.data.filter((e: any) => e.status === 'PENDING').length;
+      }
+
+      // 2. Include any non-numeric/mock items from localStorage
       const saved = localStorage.getItem('meetinghub_room_requests');
       if (saved) {
-        const requests = JSON.parse(saved);
-        const count = requests.filter((r: any) => r.status === 'Chờ duyệt' || r.status === 'pending').length;
-        setPendingRequestsCount(count);
-      } else {
-        setPendingRequestsCount(0);
+        try {
+          const requests = JSON.parse(saved);
+          const localOnly = requests.filter((r: any) => 
+            (r.status === 'Chờ duyệt' || r.status === 'pending') &&
+            typeof r.id === 'string' && !/^\d+$/.test(r.id)
+          ).length;
+          count += localOnly;
+        } catch (e) {}
       }
+
+      setPendingRequestsCount(count);
     } catch (e) {
-      console.error(e);
+      console.error("Lỗi cập nhật badge chờ duyệt:", e);
     }
   };
 

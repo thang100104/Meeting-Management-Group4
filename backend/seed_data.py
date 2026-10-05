@@ -15,7 +15,7 @@ from app.models.role import Role
 from app.models.department import Department
 from app.models.user import User
 from app.models.room import Room
-from app.models.equipment import Equipment, MeetingEquipment
+from app.models.equipment import Equipment, MeetingEquipment, EquipmentBorrowRequest
 from app.models.meeting import Meeting, MeetingParticipant
 from app.models.audit import AuditLog
 from app.core.security import get_password_hash
@@ -177,6 +177,38 @@ def seed_db():
         db.add(MeetingEquipment(meeting_id=m2.meeting_id, equipment_id=eq_prj.equipment_id, quantity=1))
         db.add(MeetingEquipment(meeting_id=m2.meeting_id, equipment_id=eq_mic.equipment_id, quantity=2))
         db.add(MeetingEquipment(meeting_id=m2.meeting_id, equipment_id=eq_led.equipment_id, quantity=1))
+
+        # Sample pending meeting m3 (Chờ phê duyệt)
+        m3 = Meeting(
+            title="Họp triển khai NCKH sinh viên Khoa CNTT",
+            description="Thống nhất danh mục đề tài nghiên cứu khoa học sinh viên năm học mới.",
+            room_id=room_2.room_id,
+            organizer_id=user_Phuong.user_id,
+            start_time=tomorrow.replace(hour=8, minute=30, second=0, microsecond=0),
+            end_time=tomorrow.replace(hour=11, minute=0, second=0, microsecond=0),
+            meeting_type="IN_PERSON",
+            status="PENDING",
+            qr_token=str(uuid.uuid4())
+        )
+        db.add(m3)
+        db.commit()
+        db.refresh(m3)
+        db.add(MeetingParticipant(meeting_id=m3.meeting_id, user_id=user_Phuong.user_id, rsvp_status="ACCEPTED"))
+        db.add(MeetingParticipant(meeting_id=m3.meeting_id, user_id=user_D.user_id, rsvp_status="PENDING"))
+        db.add(MeetingEquipment(meeting_id=m3.meeting_id, equipment_id=eq_cam.equipment_id, quantity=1))
+
+        # Sample Equipment Borrow Request (Chờ phê duyệt)
+        eq_req = EquipmentBorrowRequest(
+            requester_id=user_Phuong.user_id,
+            equipment_id=eq_mic.equipment_id,
+            quantity=2,
+            start_time=tomorrow.replace(hour=13, minute=30, second=0, microsecond=0),
+            end_time=tomorrow.replace(hour=17, minute=0, second=0, microsecond=0),
+            use_location="Hội trường Trung tâm A1",
+            reason="Mượn phục vụ Lễ Khai mạc Tuần sinh hoạt công dân sinh viên",
+            status="PENDING"
+        )
+        db.add(eq_req)
 
         db.commit()
         print("✅ Thành công: Dữ liệu đã được nạp vào Database!")
