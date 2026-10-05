@@ -6,6 +6,7 @@ import {
   X, Upload, Trash2, User,
   Tv, Mic, Volume2, Video, Laptop, Wind, Wifi, Check
 } from 'lucide-react';
+import api from '../services/api';
 
 const presetImages = [
   'https://images.unsplash.com/photo-1571624436279-b272aff752b5?auto=format&fit=crop&q=80&w=600', // Modern meeting room
@@ -152,6 +153,125 @@ const getDeviceIcon = (name: string) => {
 };
 
 // ----------------------------------------------------------------------
+// API Integration Helpers
+// ----------------------------------------------------------------------
+
+const API_BASE = "http://localhost:8000/api/v1";
+
+const getToken = (): string | null => {
+  return (
+    sessionStorage.getItem('access_token') ||
+    localStorage.getItem('access_token') ||
+    sessionStorage.getItem('token') ||
+    localStorage.getItem('token') ||
+    null
+  );
+};
+
+// Map backend RoomOut -> frontend Room interface
+const mapApiRoomToFrontend = (apiRoom: any): Room => {
+  const locationStr = apiRoom.location || '';
+  const parts = locationStr.split(',').map((p: string) => p.trim());
+  let floor = '';
+  let building = '';
+  parts.forEach((p: string) => {
+    if (p.toLowerCase().includes('tầng') || p.toLowerCase().includes('tang')) {
+      floor = p;
+    } else {
+      building = p.replace(/tòa nhà /i, 'Tòa ').replace(/^tòa /i, 'Tòa ');
+    }
+  });
+  if (!floor && parts.length > 0) floor = parts[0];
+  if (!building && parts.length > 1) building = parts[1];
+
+  const equipment = apiRoom.equipments
+    ? apiRoom.equipments.split(',').map((e: string) => e.trim()).filter(Boolean)
+    : [];
+
+  let status = 'Sẵn sàng';
+  if (apiRoom.status === 'MAINTENANCE') status = 'Bảo trì';
+
+  return {
+    id: String(apiRoom.room_id),
+    name: apiRoom.room_name || apiRoom.name || '',
+    building: building || locationStr || '',
+    floor: floor || 'Tầng 1',
+    capacity: apiRoom.capacity || 10,
+    type: apiRoom.description || 'Meeting',
+    status,
+    image: apiRoom.image_url || '',
+    equipment
+  };
+};
+
+// Map frontend Room -> backend API request body
+const mapFrontendRoomToApi = (room: Room) => {
+  const location = room.floor && room.building
+    ? `${room.floor}, ${room.building}`
+    : (room.building || room.floor || '');
+  return {
+    room_name: room.name,
+    capacity: room.capacity,
+    location: location || 'Chưa xác định',
+    status: room.status === 'Sẵn sàng' ? 'AVAILABLE' : (room.status === 'Bảo trì' ? 'MAINTENANCE' : 'AVAILABLE'),
+    description: room.type || '',
+    image_url: room.image || '',
+    equipments: room.equipment.join(', ')
+  };
+};
+
+// Fetch rooms from backend API
+const fetchRoomsFromAPI = async (): Promise<Room[]> => {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    const res = await fetch(`${API_BASE}/rooms`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return data.map(mapApiRoomToFrontend);
+    }
+    return [];
+  } catch {
+    return [];
+  }
+};
+
+// Save room to backend API (create or update)
+const saveRoomToAPI = async (room: Room, isNew: boolean): Promise<any> => {
+  const token = getToken();
+  if (!token) throw new Error('No token');
+  const payload = mapFrontendRoomToApi(room);
+  const url = isNew ? `${API_BASE}/rooms` : `${API_BASE}/rooms/${room.id}`;
+  const res = await fetch(url, {
+    method: isNew ? 'POST' : 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+};
+
+// Delete room via API
+const deleteRoomFromAPI = async (roomId: string): Promise<void> => {
+  const token = getToken();
+  if (!token) throw new Error('No token');
+  const res = await fetch(`${API_BASE}/rooms/${roomId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+};
+
+// ----------------------------------------------------------------------
 // Load Data Functions
 // ----------------------------------------------------------------------
 const getInitialBookings = (): BookingRequest[] => {
@@ -291,11 +411,28 @@ const RoomsView: React.FC = () => {
   const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>(getInitialBookings);
   const [deviceList, setDeviceList] = useState<any[]>(getInitialDevices);
 
+  // Persist rooms to localStorage whenever they change (cache for same-tab offline)
   useEffect(() => {
     localStorage.setItem('admin_rooms', JSON.stringify(rooms));
   }, [rooms]);
 
+  // Fetch rooms from backend API + set up polling for real-time sync
   useEffect(() => {
+    const loadFromAPI = async () => {
+      const apiRooms = await fetchRoomsFromAPI();
+      if (apiRooms.length > 0) {
+        setRooms(apiRooms);
+        localStorage.setItem('admin_rooms', JSON.stringify(apiRooms));
+      }
+      // If API returns no data (empty server DB), keep localStorage/mock data
+    };
+
+    loadFromAPI();
+
+    // Poll every 30 seconds for real-time sync between admin and user
+    const pollInterval = setInterval(loadFromAPI, 30000);
+
+    // Also listen for localStorage changes (same-origin cross-tab sync)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'admin_booking_requests' && e.newValue) {
         setBookingRequests(JSON.parse(e.newValue));
@@ -303,10 +440,29 @@ const RoomsView: React.FC = () => {
       if (e.key === 'admin_devices' && e.newValue) {
         setDeviceList(JSON.parse(e.newValue));
       }
+      if (e.key === 'admin_rooms' && e.newValue) {
+        try {
+          const parsedRooms = JSON.parse(e.newValue);
+          setRooms(parsedRooms);
+        } catch { }
+      }
     };
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+
+    // Listen for custom appDataSync events (same-tab dispatch)
+    const handleAppDataSync = () => {
+      loadFromAPI();
+    };
+    window.addEventListener('appDataSync', handleAppDataSync);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('appDataSync', handleAppDataSync);
+    };
   }, []);
+
+  (window as any).roomsApi = { fetchRoomsFromAPI };
 
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchTerm, setSearchTerm] = useState('');
@@ -350,15 +506,42 @@ const RoomsView: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleQuickStatusChange = (id: string, status: string) => {
+  const handleQuickStatusChange = async (id: string, status: string) => {
+    // Optimistic update for immediate UI feedback
     setRooms(prev => prev.map(r => r.id === id ? { ...r, status } : r));
     setActiveMenuId(null);
+
+    // Persist to backend API
+    const room = rooms.find(r => r.id === id);
+    if (room) {
+      try {
+        await saveRoomToAPI({ ...room, status }, false);
+        // Sync event for same-tab and cross-tab listeners
+        window.dispatchEvent(new Event('appDataSync'));
+        window.dispatchEvent(new Event('roomsUpdated'));
+        window.dispatchEvent(new Event('storage'));
+      } catch (err: any) {
+        console.error("Failed to sync room status to API:", err.message);
+        // Revert optimistic update on failure
+        setRooms(prev => prev.map(r => r.id === id ? { ...r, status: room.status } : r));
+        alert(`Lỗi cập nhật trạng thái: ${err.message}`);
+      }
+    }
   };
 
-  const handleQuickDelete = (id: string, name: string) => {
+  const handleQuickDelete = async (id: string, name: string) => {
     if (window.confirm(`Bạn có chắc chắn muốn xóa phòng ${name} không?`)) {
-      setRooms(prev => prev.filter(r => r.id !== id));
-      setActiveMenuId(null);
+      try {
+        await deleteRoomFromAPI(id);
+        setRooms(prev => prev.filter(r => r.id !== id));
+        setActiveMenuId(null);
+        window.dispatchEvent(new Event('appDataSync'));
+        window.dispatchEvent(new Event('roomsUpdated'));
+        window.dispatchEvent(new Event('storage'));
+      } catch (err: any) {
+        console.error("Failed to delete room via API:", err.message);
+        alert(`Lỗi xóa phòng: ${err.message}`);
+      }
     }
   };
 
@@ -384,7 +567,7 @@ const RoomsView: React.FC = () => {
     }
   };
 
-  const handleSaveRoom = (e: React.FormEvent) => {
+  const handleSaveRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     const roomToSave: Room = {
       id: formData.id || `R0${rooms.length + 1}`,
@@ -397,14 +580,38 @@ const RoomsView: React.FC = () => {
       image: formData.image || FALLBACK_IMAGE,
       equipment: formData.equipment || [],
     };
-    
-    if (modalMode === 'add') {
+
+    const isNew = modalMode === 'add';
+    const prevRooms = rooms;
+
+    // Optimistic update
+    if (isNew) {
       setRooms(prev => [roomToSave, ...prev]);
     } else {
       setRooms(prev => prev.map(r => r.id === roomToSave.id ? roomToSave : r));
     }
-    
     setIsModalOpen(false);
+
+    // Persist to backend API
+    try {
+      const apiResult = await saveRoomToAPI(roomToSave, isNew);
+      // If creating new room, update local id with server-generated id
+      if (isNew && apiResult) {
+        const serverRoom = mapApiRoomToFrontend(apiResult);
+        setRooms(prev => prev.map(r => r.id === roomToSave.id ? serverRoom : r));
+        localStorage.setItem('admin_rooms', JSON.stringify(
+          prevRooms.map(r => r.id === roomToSave.id ? serverRoom : r)
+        ));
+      }
+      window.dispatchEvent(new Event('appDataSync'));
+      window.dispatchEvent(new Event('roomsUpdated'));
+      window.dispatchEvent(new Event('storage'));
+    } catch (err: any) {
+      console.error("Failed to save room via API:", err.message);
+      // Revert optimistic update on failure
+      setRooms(prevRooms);
+      alert(`Lỗi lưu phòng: ${err.message}`);
+    }
   };
 
   const filteredRooms = rooms.filter(room => {

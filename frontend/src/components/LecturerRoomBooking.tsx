@@ -101,6 +101,24 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
       }
     };
     fetchRooms();
+
+    const handleSync = () => {
+      fetchRooms();
+    };
+
+    window.addEventListener('appDataSync', handleSync);
+    window.addEventListener('roomsUpdated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    // Polling định kỳ mỗi 15 giây để đảm bảo dữ liệu luôn đồng bộ thời gian thực
+    const pollInterval = setInterval(fetchRooms, 15000);
+
+    return () => {
+      window.removeEventListener('appDataSync', handleSync);
+      window.removeEventListener('roomsUpdated', handleSync);
+      window.removeEventListener('storage', handleSync);
+      clearInterval(pollInterval);
+    };
   }, []);
 
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);

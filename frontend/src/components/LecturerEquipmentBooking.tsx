@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Monitor, Mic, Calendar, Clock, MapPin, X, Box, CheckCircle, Laptop, Speaker, Camera } from 'lucide-react';
 import api from '../services/api';
 
@@ -28,7 +28,27 @@ export default function LecturerEquipmentBooking({ userProfile }: { userProfile:
   const [roomLocation, setRoomLocation] = useState('');
   const [purpose, setPurpose] = useState('');
 
-  useEffect(() => { loadEquipment(); }, []);
+  useEffect(() => { 
+    loadEquipment(); 
+
+    const handleSync = () => {
+      loadEquipment();
+    };
+
+    window.addEventListener('appDataSync', handleSync);
+    window.addEventListener('equipmentUpdated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    // Polling định kỳ mỗi 15 giây để đảm bảo dữ liệu luôn đồng bộ thời gian thực
+    const pollInterval = setInterval(loadEquipment, 15000);
+
+    return () => {
+      window.removeEventListener('appDataSync', handleSync);
+      window.removeEventListener('equipmentUpdated', handleSync);
+      window.removeEventListener('storage', handleSync);
+      clearInterval(pollInterval);
+    };
+  }, []);
 
   const loadEquipment = async () => {
     try {

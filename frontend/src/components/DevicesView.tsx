@@ -7,6 +7,145 @@ import {
   Tag
 } from 'lucide-react';
 
+const API_BASE = "http://localhost:8000/api/v1";
+
+const getToken = (): string | null => {
+  return (
+    sessionStorage.getItem('access_token') ||
+    localStorage.getItem('access_token') ||
+    sessionStorage.getItem('token') ||
+    localStorage.getItem('token') ||
+    null
+  );
+};
+
+// Map backend equipment_type to frontend display type
+const typeBackToFront: Record<string, string> = {
+  PROJECTOR: 'Projector', TV: 'TV', MICROPHONE: 'Microphone',
+  SMARTBOARD: 'Board', SPEAKER: 'Speaker', CAMERA: 'Camera',
+  LAPTOP: 'Laptop', HVAC: 'HVAC', NETWORK: 'Network', OTHER: 'Other'
+};
+const typeFrontToBack: Record<string, string> = {
+  Projector: 'PROJECTOR', TV: 'TV', Microphone: 'MICROPHONE',
+  Board: 'SMARTBOARD', Speaker: 'SPEAKER', Camera: 'CAMERA',
+  Laptop: 'LAPTOP', HVAC: 'HVAC', Network: 'Network', Other: 'OTHER'
+};
+
+// Map backend status to frontend status
+const statusBackToFront: Record<string, string> = {
+  AVAILABLE: 'Sẵn sàng', MAINTENANCE: 'Bảo dưỡng', BROKEN: 'Hỏng hóc'
+};
+const statusFrontToBack: Record<string, string> = {
+  'Sẵn sàng': 'AVAILABLE', 'Bảo dưỡng': 'MAINTENANCE', 'Hỏng hóc': 'BROKEN'
+};
+
+// Map API equipment → frontend Device
+const mapApiEquipmentToFrontend = (apiEq: any, rooms: any[]): Device => {
+  const roomName = apiEq.room_name || (apiEq.room_id ? `Phòng #${apiEq.room_id}` : 'Kho thiết bị di động');
+  const mappedStatus = (statusBackToFront[apiEq.status] as ('Sẵn sàng' | 'Bảo dưỡng' | 'Hỏng hóc')) || 'Sẵn sàng';
+  return {
+    id: String(apiEq.equipment_id),
+    name: apiEq.equipment_name || '',
+    type: typeBackToFront[apiEq.equipment_type] || apiEq.equipment_type || 'Other',
+    serial: apiEq.serial_number || '',
+    allocation: apiEq.room_id ? 'Cố định' : 'Di động',
+    location: roomName,
+    status: mappedStatus,
+    history: []
+  };
+};
+
+// Map frontend Device → backend request body
+const mapDeviceToApi = (dev: Device, rooms: any[]): any => {
+  // Look up room_id by location name
+  let roomId = null;
+  if (dev.allocation === 'Cố định') {
+    const matchedRoom = rooms.find(r => 
+      (r.room_name === dev.location) || 
+      (r.name === dev.location) ||
+      (r.room_name && dev.location && r.room_name.includes(dev.location))
+    );
+    roomId = matchedRoom?.room_id || matchedRoom?.id || null;
+  }
+  return {
+    equipment_name: dev.name,
+    equipment_type: typeFrontToBack[dev.type] || dev.type.toUpperCase(),
+    serial_number: dev.serial || null,
+    room_id: roomId,
+    status: statusFrontToBack[dev.status] || 'AVAILABLE',
+    description: dev.history?.length ? dev.history[0]?.event : null
+  };
+};
+
+// Fetch equipment list from API
+const fetchEquipmentsFromAPI = async (): Promise<Device[]> => {
+  const token = getToken();
+  if (!token) return [];
+  try {
+    // Fetch rooms first to map room_id → room_name
+    const roomsRes = await fetch(`${API_BASE}/rooms`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const rooms = roomsRes.ok ? await roomsRes.json() : [];
+
+    const res = await fetch(`${API_BASE}/equipments`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return data.map((eq: any) => mapApiEquipmentToFrontend(eq, rooms));
+    }
+    return [];
+  } catch {
+    return [];
+  }
+};
+
+// Save equipment to API
+const saveEquipmentToAPI = async (dev: Device, rooms: any[], isNew: boolean): Promise<any> => {
+  const token = getToken();
+  if (!token) throw new Error('No token');
+
+  // Fallback: nếu danh sách rooms truyền vào bị rỗng, tự động fetch rooms từ API
+  let currentRooms = rooms;
+  if (!currentRooms || currentRooms.length === 0) {
+    try {
+      const rRes = await fetch(`${API_BASE}/rooms`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (rRes.ok) currentRooms = await rRes.json();
+    } catch {}
+  }
+
+  const payload = mapDeviceToApi(dev, currentRooms || []);
+  const url = isNew ? `${API_BASE}/equipments` : `${API_BASE}/equipments/${dev.id}`;
+  const res = await fetch(url, {
+    method: isNew ? 'POST' : 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+};
+
+// Delete equipment from API
+const deleteEquipmentFromAPI = async (id: string): Promise<void> => {
+  const token = getToken();
+  if (!token) throw new Error('No token');
+  const res = await fetch(`${API_BASE}/equipments/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+};
+
 interface DeviceHistory {
   date: string;
   event: string;
@@ -90,20 +229,89 @@ const DevicesView: React.FC = () => {
     return mockDevices;
   });
 
+  // Store rooms list for room_id lookup when saving equipment
+  const [roomsData, setRoomsData] = useState<any[]>([]);
+
   const [availableRooms, setAvailableRooms] = useState<string[]>([]);
 
+  // Fetch rooms + equipments from backend API + set up polling for real-time sync
   useEffect(() => {
-    const savedRooms = localStorage.getItem('admin_rooms');
-    if (savedRooms) {
+    const loadFromAPI = async () => {
+      const token = getToken();
+      if (!token) return;
+
+      // 1. Fetch rooms for location → room_id mapping
+      let currentRooms: any[] = [];
       try {
-        const parsed = JSON.parse(savedRooms);
-        setAvailableRooms(parsed.map((r: any) => r.name));
-      } catch(e) {}
-    } else {
-      setAvailableRooms(['Phòng Hội trường B1', 'Phòng Sáng tạo C3', 'Phòng họp VIP A1', 'Phòng Đào tạo A4']);
-    }
+        const roomsRes = await fetch(`${API_BASE}/rooms`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (roomsRes.ok) {
+          currentRooms = await roomsRes.json();
+          setRoomsData(currentRooms);
+          const roomNames = currentRooms.map((r: any) => r.room_name || r.name);
+          setAvailableRooms([...roomNames, 'Kho thiết bị di động']);
+        }
+      } catch (err) {
+        console.error("Failed to fetch rooms:", err);
+      }
+
+      // 2. Fetch equipments from API
+      try {
+        const res = await fetch(`${API_BASE}/equipments`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const mapped = data.map((eq: any) => mapApiEquipmentToFrontend(eq, currentRooms));
+            setDevices(mapped);
+            localStorage.setItem('admin_devices', JSON.stringify(mapped));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch equipments:", err);
+      }
+    };
+
+    loadFromAPI();
+
+    // Poll every 30 seconds for real-time sync between admin and user
+    const pollInterval = setInterval(loadFromAPI, 30000);
+
+    // Listen for storage changes across tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'admin_devices' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].allocation) {
+            setDevices(parsed);
+          }
+        } catch { }
+      }
+      if (e.key === 'admin_rooms' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setAvailableRooms(parsed.map((r: any) => r.name || r.room_name));
+        } catch { }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // Listen for custom appDataSync events (same-tab dispatch)
+    const handleAppDataSync = () => {
+      loadFromAPI();
+    };
+    window.addEventListener('appDataSync', handleAppDataSync);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('appDataSync', handleAppDataSync);
+    };
   }, []);
 
+  // Persist devices to localStorage whenever they change (cache for same-tab offline)
   useEffect(() => {
     localStorage.setItem('admin_devices', JSON.stringify(devices));
   }, [devices]);
@@ -146,18 +354,28 @@ const DevicesView: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (window.confirm(`Bạn có chắc chắn muốn xóa thiết bị "${name}" không? Hành động này không thể hoàn tác.`)) {
-      setDevices(prev => prev.filter(d => d.id !== id));
+      try {
+        await deleteEquipmentFromAPI(id);
+        setDevices(prev => prev.filter(d => d.id !== id));
+        window.dispatchEvent(new Event('appDataSync'));
+        window.dispatchEvent(new Event('equipmentUpdated'));
+        window.dispatchEvent(new Event('storage'));
+      } catch (err: any) {
+        console.error("Failed to delete equipment via API:", err.message);
+        alert(`Lỗi xóa thiết bị: ${err.message}`);
+      }
     }
   };
 
-  const handleSaveDevice = (e: React.FormEvent) => {
+  const handleSaveDevice = async (e: React.FormEvent) => {
     e.preventDefault();
     const isNew = modalMode === 'add';
     
     const deviceToSave = { ...formData } as Device;
-    
+    const prevDevices = devices;
+
     if (isNew) {
       deviceToSave.history = [{ date: getTodayStringVN(), event: 'Nhập mới vào hệ thống' }];
       setDevices(prev => [deviceToSave, ...prev]);
@@ -175,9 +393,24 @@ const DevicesView: React.FC = () => {
     }
     
     setIsEditModalOpen(false);
+
+    // Persist to backend API
+    try {
+      await saveEquipmentToAPI(deviceToSave, roomsData, isNew);
+      window.dispatchEvent(new Event('appDataSync'));
+      window.dispatchEvent(new Event('equipmentUpdated'));
+      window.dispatchEvent(new Event('storage'));
+    } catch (err: any) {
+      console.error("Failed to save equipment via API:", err.message);
+      // Revert optimistic update on failure
+      setDevices(prevDevices);
+      alert(`Lỗi lưu thiết bị: ${err.message}`);
+    }
   };
 
-  const handleQuickStatusChange = (id: string, newStatus: 'Sẵn sàng' | 'Bảo dưỡng' | 'Hỏng hóc') => {
+  const handleQuickStatusChange = async (id: string, newStatus: 'Sẵn sàng' | 'Bảo dưỡng' | 'Hỏng hóc') => {
+    // Optimistic update for immediate UI feedback
+    const oldDevice = devices.find(d => d.id === id);
     setDevices(prev => prev.map(d => {
       if (d.id === id && d.status !== newStatus) {
         const newHist = [{ date: getTodayStringVN(), event: `Chuyển trạng thái sang ${newStatus} (Cập nhật nhanh)` }, ...d.history];
@@ -185,6 +418,23 @@ const DevicesView: React.FC = () => {
       }
       return d;
     }));
+
+    // Persist to backend API
+    if (oldDevice) {
+      try {
+        await saveEquipmentToAPI({ ...oldDevice, status: newStatus }, roomsData, false);
+        window.dispatchEvent(new Event('appDataSync'));
+        window.dispatchEvent(new Event('equipmentUpdated'));
+        window.dispatchEvent(new Event('storage'));
+      } catch (err: any) {
+        console.error("Failed to sync equipment status to API:", err.message);
+        // Revert optimistic update on failure
+        setDevices(prev => prev.map(d => 
+          d.id === id ? { ...d, status: oldDevice.status, history: oldDevice.history } : d
+        ));
+        alert(`Lỗi cập nhật trạng thái: ${err.message}`);
+      }
+    }
   };
 
   const filteredDevices = devices.filter(d => {
