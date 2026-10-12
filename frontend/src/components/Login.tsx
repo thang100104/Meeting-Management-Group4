@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Video, Calendar, MonitorPlay, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getStorage, setStorage } from '../utils/syncHelper';
+import { setStorage } from '../utils/syncHelper';
+import { clearSession, saveAccessToken } from '../services/session';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -45,150 +46,28 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
     setLoading(true);
     const inputEmail = email.trim().toLowerCase();
-    const inputPassword = password.trim();
+    const inputPassword = password;
 
     try {
-      let payload: any = {
-        email: inputEmail,
-        password: inputPassword
-      };
-
-      try {
-        const response = await api.post('/auth/login', payload);
-        await handleLoginResponse(response.data);
-      } catch (jsonErr: any) {
-        if (jsonErr.response?.status === 422) {
-          const formData = new URLSearchParams();
-          formData.append('username', inputEmail);
-          formData.append('password', inputPassword);
-          const formResponse = await api.post('/auth/login', formData, {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-          });
-          await handleLoginResponse(formResponse.data);
-        } else {
-          throw jsonErr;
-        }
-      }
-
-    } catch (error: any) {
-      console.error("Login API Error, attempting fallback mock data:", error);
-      
-      // MOCK FALLBACK DUAL-MODE
-      if (inputEmail === 'admin@ictu.edu.vn' && inputPassword === '123456') {
-        let mockAdmin = { id: 1, email: inputEmail, fullName: 'Admin System', role: 'ADMIN', avatar: '' };
-        
-        // Ưu tiên đọc dữ liệu cũ đã lưu (nếu có) để không bị mất sửa đổi Profile
-        const savedMock = localStorage.getItem(`mock_profile_${inputEmail}`);
-        if (savedMock) {
-          try { mockAdmin = { ...mockAdmin, ...JSON.parse(savedMock) }; } catch(e){}
-        }
-
-        const token = 'mock-token-admin';
-        localStorage.setItem('access_token', token);
-        localStorage.setItem('token', token);
-        sessionStorage.setItem('access_token', token);
-        sessionStorage.setItem('token', token);
-        
-        localStorage.setItem('user', JSON.stringify(mockAdmin));
-        localStorage.setItem('currentUser', JSON.stringify(mockAdmin));
-        sessionStorage.setItem('user', JSON.stringify(mockAdmin));
-        sessionStorage.setItem('currentUser', JSON.stringify(mockAdmin));
-        setStorage('meetinghub_user', mockAdmin);
-        
-        onLoginSuccess(token, mockAdmin);
-        updateUser(mockAdmin);
-        
-        navigate('/dashboard');
-        setLoading(false);
-        return;
-      }
-
-      if ((inputEmail === 'hoangphuong@ictu.edu.vn' || inputEmail.endsWith('@ictu.edu.vn')) && inputPassword === '123456') {
-        let mockLecturer = { id: 2, email: inputEmail, fullName: 'Giảng viên ICTU', role: 'LECTURER', avatar: '' };
-        
-        // Ưu tiên đọc dữ liệu cũ đã lưu
-        const savedMock = localStorage.getItem(`mock_profile_${inputEmail}`);
-        if (savedMock) {
-          try { mockLecturer = { ...mockLecturer, ...JSON.parse(savedMock) }; } catch(e){}
-        }
-
-        const token = 'mock-token-lecturer';
-        localStorage.setItem('access_token', token);
-        localStorage.setItem('token', token);
-        sessionStorage.setItem('access_token', token);
-        sessionStorage.setItem('token', token);
-        
-        localStorage.setItem('user', JSON.stringify(mockLecturer));
-        localStorage.setItem('currentUser', JSON.stringify(mockLecturer));
-        sessionStorage.setItem('user', JSON.stringify(mockLecturer));
-        sessionStorage.setItem('currentUser', JSON.stringify(mockLecturer));
-        setStorage('meetinghub_user', mockLecturer);
-        
-        onLoginSuccess(token, mockLecturer);
-        updateUser(mockLecturer);
-        
-        navigate('/lecturer');
-        setLoading(false);
-        return;
-      }
-
-      // Nếu không phải tài khoản mock thì báo lỗi như bình thường
-      const detail = error.response?.data?.detail;
-      const errorMsg = typeof detail === 'string' ? detail : 'Email hoặc mật khẩu không chính xác!';
-      alert(`[Lỗi Backend]: ${errorMsg}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLoginResponse = async (data: any) => {
-    const access_token = data.access_token || data.token;
-    
-    // Lưu token ngay lập tức để api.ts có thể mang theo trong request tiếp theo
-    localStorage.setItem('access_token', access_token);
-    localStorage.setItem('token', access_token); 
-    sessionStorage.setItem('access_token', access_token);
-    sessionStorage.setItem('token', access_token);
-
-    try {
-      // 2. FRONTEND: Gọi API lấy dữ liệu chuẩn từ Database
-      const meResponse = await api.get('/auth/me', {
-        headers: {
-          Authorization: `Bearer ${access_token}`
-        }
-      });
-      
-      const dbUser = meResponse.data;
-      
+      const { data } = await api.post('/auth/login', { email: inputEmail, password: inputPassword });
+      if (!data.access_token) throw new Error('Máy chủ không trả về phiên đăng nhập hợp lệ.');
+      saveAccessToken(data.access_token);
+      const { data: dbUser } = await api.get('/auth/me');
       const finalUserData = {
-        id: dbUser.user_id,
-        email: dbUser.email,
-        fullName: dbUser.full_name,
-        role: dbUser.role?.role_name || dbUser.role || data.role || (dbUser.email.includes('admin') ? 'ADMIN' : 'LECTURER'),
+        id: dbUser.user_id, email: dbUser.email, fullName: dbUser.full_name,
+        role: dbUser.role?.role_name || dbUser.role || data.role,
         avatar: dbUser.avatar_url || ''
       };
-
-      localStorage.setItem('user', JSON.stringify(finalUserData));
-      localStorage.setItem('currentUser', JSON.stringify(finalUserData));
-      sessionStorage.setItem('user', JSON.stringify(finalUserData));
-      sessionStorage.setItem('currentUser', JSON.stringify(finalUserData));
       setStorage('meetinghub_user', finalUserData);
-
-      onLoginSuccess(access_token, finalUserData);
+      onLoginSuccess(data.access_token, finalUserData);
       updateUser(finalUserData);
-
-      window.dispatchEvent(new Event('user-data-updated'));
-      window.dispatchEvent(new Event('userProfileUpdated'));
-
-      const r = (finalUserData.role || '').toLowerCase();
-      if (r === 'lecturer' || r.includes('giảng viên')) {
-        navigate('/lecturer');
-      } else {
-        navigate('/dashboard'); // Admin dashboard
-      }
-    } catch (error) {
-      console.error("Lỗi khi fetch thông tin user từ DB:", error);
-      alert("Đăng nhập thành công nhưng không lấy được thông tin hồ sơ. Vui lòng thử lại!");
+      navigate(finalUserData.role === 'ADMIN' ? '/dashboard' : '/lecturer');
+    } catch (error: any) {
+      clearSession();
+      const detail = error.response?.data?.detail;
+      setPasswordError(typeof detail === 'string' ? detail : error.response ? 'Đăng nhập không thành công. Vui lòng kiểm tra thông tin.' : 'Không thể kết nối máy chủ. Vui lòng kiểm tra backend rồi thử lại.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -254,6 +133,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               <p style={{ color: '#64748b', margin: 0 }}>Đăng nhập để tiếp tục sử dụng hệ thống</p>
             </div>
 
+            {new URLSearchParams(window.location.search).get('reason') === 'session-expired' && <p role="alert" style={{ color: '#b45309', marginBottom: '16px' }}>Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại bằng tài khoản đã đăng ký trên máy chủ.</p>}
             <form onSubmit={handleLogin} className="login-form" autoComplete="off">
               {/* Khắc phục triệt để Autofill của Chrome */}
               <input type="email" name="fake_email" style={{ position: 'absolute', opacity: 0, top: '-9999px', height: 0, width: 0 }} tabIndex={-1} aria-hidden="true" autoComplete="off" />

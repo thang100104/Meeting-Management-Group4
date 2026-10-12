@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import api from '../services/api';
+import { clearSession, getAccessToken } from '../services/session';
 
 interface User {
   id?: number | string;
@@ -68,26 +69,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('access_token');
-    sessionStorage.removeItem('user');
-    sessionStorage.removeItem('currentUser');
-    sessionStorage.removeItem('meetinghub_user');
-    
-    localStorage.removeItem('token');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('meetinghub_user');
-    
+    clearSession();
     setUser(null);
     window.location.href = '/login';
   };
 
   useEffect(() => {
-    if (sessionStorage.getItem('access_token')) {
+    if (getAccessToken()) {
       refreshProfile();
     }
+  }, []);
+
+  useEffect(() => {
+    const handleExpired = () => setUser(null);
+    window.addEventListener('session-expired', handleExpired);
+    return () => window.removeEventListener('session-expired', handleExpired);
   }, []);
 
   return (

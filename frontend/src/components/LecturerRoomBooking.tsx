@@ -29,13 +29,19 @@ const presetImages = [
 export default function LecturerRoomBooking({ userProfile }: { userProfile: any }) {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
-  const [apiError, setApiError] = useState(false);
+  const [apiError, setApiError] = useState('');
 
   // ─── Fetch danh sách phòng từ API (đồng bộ với Admin) ───────────────────────
   useEffect(() => {
+    let active = true;
+    let fetching = false;
+    let authFailed = false;
     const fetchRooms = async () => {
+      if (!active || fetching || authFailed) return;
+      fetching = true;
       try {
-        const res = await api.get('/rooms');
+        const res = await api.get('/rooms', { params: { only_allowed_for_me: true } });
+        if (!active) return;
         if (res.data && res.data.length > 0) {
           const mappedRooms: Room[] = res.data.map((r: any, index: number) => {
             // Parse location: "Tầng X Tòa Y" hoặc "Tầng X, Tòa Y"
@@ -88,16 +94,19 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
             };
           });
           setRooms(mappedRooms);
-          setApiError(false);
+          setApiError('');
         } else {
           setRooms([]);
         }
-      } catch (err) {
-        console.error('Lỗi khi lấy danh sách phòng:', err);
-        setApiError(true);
+      } catch (err: any) {
+        if (!active) return;
+        authFailed = err.response?.status === 401 || err.code === 'AUTH_REQUIRED';
+        const detail = err.response?.data?.detail;
+        setApiError(authFailed ? 'Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.' : typeof detail === 'string' ? detail : err.response ? 'Không thể tải danh sách phòng. Vui lòng thử lại sau.' : 'Không thể kết nối máy chủ. Vui lòng kiểm tra backend.');
         setRooms([]);
       } finally {
-        setLoading(false);
+        fetching = false;
+        if (active) setLoading(false);
       }
     };
     fetchRooms();
@@ -114,6 +123,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
     const pollInterval = setInterval(fetchRooms, 15000);
 
     return () => {
+      active = false;
       window.removeEventListener('appDataSync', handleSync);
       window.removeEventListener('roomsUpdated', handleSync);
       window.removeEventListener('storage', handleSync);
@@ -209,7 +219,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
         meeting_type: type
       };
 
-      await api.post('/meetings', newBookingAPI);
+      const { data: createdMeeting } = await api.post('/meetings', newBookingAPI);
 
       const currentUserStr = localStorage.getItem('user') || sessionStorage.getItem('user') || '{}';
       let currentUser: any = {};
@@ -217,7 +227,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
 
       // Lưu LocalStorage để sync Badge bên Sidebar
       const mockBooking = {
-        id: Date.now().toString(),
+        id: String(createdMeeting.meeting_id),
         roomId: selectedRoom.id,
         roomName: selectedRoom.name,
         userId: currentUser.id || currentUser.email || userProfile?.email,
@@ -353,8 +363,8 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
       {!loading && apiError && (
         <div style={{ padding: '40px', textAlign: 'center', backgroundColor: '#fff7ed', borderRadius: '24px', border: '1px solid #fed7aa' }}>
           <AlertTriangle size={48} color="#f97316" style={{ margin: '0 auto 16px auto' }} />
-          <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#9a3412', margin: '0 0 8px 0' }}>Không thể kết nối với máy chủ</h3>
-          <p style={{ color: '#ea580c', margin: 0 }}>Vui lòng kiểm tra kết nối mạng hoặc thử lại sau.</p>
+          <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#9a3412', margin: '0 0 8px 0' }}>Không thể tải danh sách phòng</h3>
+          <p style={{ color: '#ea580c', margin: 0 }}>{apiError}</p>
         </div>
       )}
 

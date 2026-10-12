@@ -487,3 +487,16 @@ curl http://localhost:3000/api/v1/health
 | 2026-09-26 | Antigravity AI | Hoàn thành Giai đoạn E: triển khai toàn bộ nghiệp vụ tạo cuộc họp POST /api/v1/meetings (multipart attachments, conflict detection & suggestions, Prisma transaction, ICS & notification log, error isolation, AC1–AC6), 29/29 tests PASS. Sẵn sàng dựng Frontend hoàn chỉnh. | **Hoàn thành Giai đoạn E** |
 | 2026-09-26 | Antigravity AI | Xây dựng hoàn chỉnh Giao diện Frontend MeetFlow (MVP V1): thiết kế Design System sang trọng, hỗ trợ Dark/Light mode, lịch tương tác đa chế độ (Tháng, Tuần, Danh sách, Phòng họp), form tạo cuộc họp đáp ứng trọn vẹn tiêu chí nghiệm thu AC1–AC6 (gợi ý/ghi đè xung đột lịch, xác nhận đóng form bẩn, đính kèm tệp, 1-click chuyển đổi tài khoản demo). Toàn bộ 34 tests PASS. | **Hoàn thành Frontend MeetFlow V1** |
 | 2026-09-28 | Antigravity AI | Hoàn thành Giai đoạn 4: Quản lý Thiết bị & Đặt mượn kèm phòng (Equipment Management & Booking). Backend Python FastAPI (Models Equipment & MeetingEquipment, Schemas, CRUD endpoints /api/v1/equipments, Conflict Detection thiết bị 409 Conflict, giải phóng thiết bị khi hủy họp, bộ test tự động test_phase4.py đạt 100% 13/13 test cases). Frontend React/Vite (Component EquipmentManager với KPI Dashboard/Card Grid/CRUD Admin, TimetableGrid tích hợp chọn thiết bị khả dụng theo slot và modal chi tiết cuộc họp, Demo Role Switcher Admin/Giảng viên/Sinh viên). Build thành công 100%. | **Hoàn thành Giai đoạn 4 (Backend & Frontend)** |
+
+## 10. Bổ sung nhắc lịch họp T-15 — 2026-10-12
+
+- Đã triển khai trên stack hiện hành FastAPI/SQLAlchemy + React/Vite: worker DB polling mỗi phút, thông báo cá nhân lưu DB, chuông số chưa đọc và popup chi tiết cho admin/giảng viên.
+- Nhắc lịch đã duyệt trước 15 phút; chống lặp theo cuộc họp/người nhận/giờ bắt đầu; loại nhắc cũ khi hủy, đổi giờ hoặc từ chối tham dự.
+- Có SMTP tùy chọn, lưu kết quả gửi và cô lập lỗi email; không tự retry. Chi tiết vận hành, múi giờ và nghiệm thu: [docs/meeting-reminders.md](docs/meeting-reminders.md).
+
+## 11. Sửa đăng ký/đăng nhập và đặt phòng sinh viên — 2026-10-12
+
+- Chuyển đăng ký sang FastAPI/database thật, loại bỏ token đăng nhập giả.
+- Sửa vòng lặp 401 do interceptor phát `storage`; đồng bộ xóa phiên, chuyển về đăng nhập và phân biệt lỗi xác thực với lỗi kết nối.
+- Sinh viên gửi yêu cầu đặt phòng chờ admin duyệt, nhận nhắc T-15 sau duyệt; kiểm tra quyền phòng và trùng lịch.
+- Build frontend và 15 kiểm thử backend đã qua; browser QA đã xác minh luồng lỗi 401 và đăng ký/đăng nhập.

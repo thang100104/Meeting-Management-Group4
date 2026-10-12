@@ -14,6 +14,15 @@ class Settings(BaseSettings):
     # Database (Mặc định dùng SQLite cục bộ, dễ dàng chuyển sang PostgreSQL qua biến môi trường)
     DATABASE_URL: str = "sqlite:///./meetings.db"
     
+    # Optional reminder email provider; in-app reminders always run.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 1025
+    SMTP_FROM: str = "MeetingHub <noreply@meetinghub.local>"
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_STARTTLS: bool = False
+    SMTP_SSL: bool = False
+
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["*"]
     

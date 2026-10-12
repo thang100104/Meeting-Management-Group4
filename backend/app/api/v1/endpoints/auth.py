@@ -4,16 +4,36 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.models.user import User
-from app.schemas.auth import LoginRequest, Token
+from app.schemas.auth import LoginRequest, Token, RegisterRequest
+from app.models.role import Role
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from app.schemas.user import UserOut, UserChangePassword
 from app.api.deps import get_current_active_user
 
 router = APIRouter()
 
+@router.post("/register", response_model=UserOut, status_code=201, summary="Đăng ký tài khoản sinh viên")
+def register(data: RegisterRequest, db: Session = Depends(get_db)):
+    if db.query(User).filter(func.lower(User.email) == data.email).first():
+        raise HTTPException(status_code=409, detail="Email này đã được đăng ký. Vui lòng đăng nhập.")
+    role = db.query(Role).filter(Role.role_name == 'PARTICIPANT').first()
+    if not role:
+        raise HTTPException(status_code=503, detail="Vai trò sinh viên chưa được khởi tạo. Vui lòng liên hệ quản trị viên.")
+    user = User(full_name=data.full_name, email=data.email, password_hash=get_password_hash(data.password), role_id=role.role_id, status='ACTIVE')
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Email này đã được đăng ký. Vui lòng đăng nhập.")
+    db.refresh(user)
+    return user
+
 @router.post("/login", response_model=Token, summary="Đăng nhập bằng JSON (email + password)")
 def login_json(data: LoginRequest, db: Session = Depends(get_db)):
     """Xác thực email/password, trả về JWT Token và thông tin User."""
-    user = db.query(User).filter(User.email == data.email).first()
+    user = db.query(User).filter(func.lower(User.email) == data.email).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
