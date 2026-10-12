@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Video, Calendar, MonitorPlay, RefreshCw, User as UserIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import api from '../services/api';
 
-const API_BASE = "http://localhost:8000/api/v1";
 
 export default function Register() {
   const [fullName, setFullName] = useState('');
@@ -27,37 +26,19 @@ export default function Register() {
 
     setLoading(true);
     
-    // Simulate API delay
-    setTimeout(() => {
-      const registeredUsers = JSON.parse(localStorage.getItem('meetinghub_registered_users') || '[]');
-      const cleanEmail = email.trim().toLowerCase();
-      
-      const emailExists = registeredUsers.some((u: any) => u.email === cleanEmail);
-      if (emailExists) {
-        alert("Email này đã được sử dụng! Vui lòng dùng email khác.");
-        setLoading(false);
-        return;
-      }
+    try {
+      await api.post('/auth/register', {
+        full_name: fullName.trim(), email: email.trim().toLowerCase(),
+        password, role_name: 'PARTICIPANT'
+      });
+      alert('Đăng ký tài khoản thành công! Vui lòng đăng nhập.');
+      navigate('/login', { state: { registeredEmail: email.trim().toLowerCase() } });
+    } catch (error: any) {
+      const detail = error.response?.data?.detail;
+      const message = typeof detail === 'string' ? detail : Array.isArray(detail) ? 'Vui lòng nhập họ tên và mật khẩu từ 6 đến 72 ký tự.' : 'Không thể kết nối máy chủ. Vui lòng kiểm tra backend rồi thử lại.';
+      alert(message);
+    } finally { setLoading(false); }
 
-      const newUser = {
-        fullName,
-        email: cleanEmail,
-        password,
-        role: roleName,
-        avatarUrl: "",
-        phone: ""
-      };
-
-      registeredUsers.push(newUser);
-      localStorage.setItem('meetinghub_registered_users', JSON.stringify(registeredUsers));
-      localStorage.setItem('meetinghub_user', JSON.stringify(newUser));
-
-      alert("✓ Đăng ký tài khoản thành công! Vui lòng đăng nhập.");
-      setLoading(false);
-      
-      // Navigate to login with the registered email
-      navigate('/login', { state: { registeredEmail: cleanEmail } });
-    }, 800);
   };
 
   return (
@@ -185,8 +166,7 @@ export default function Register() {
                 <label>Vai trò</label>
                 <select className="modern-input" value={roleName} onChange={(e) => setRoleName(e.target.value)} style={{ padding: '0.875rem 1rem', width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                   <option value="student">Sinh viên / Khách tham gia</option>
-                  <option value="lecturer">Giảng viên / Người tổ chức</option>
-                  <option value="admin">Quản trị viên</option>
+
                 </select>
               </div>
               

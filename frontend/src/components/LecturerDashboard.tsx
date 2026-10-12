@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getStorage, useDataSync } from '../utils/syncHelper';
 import { NotificationDropdown } from './NotificationDropdown';
+import { useNotifications } from '../context/NotificationContext';
+import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Calendar, ClipboardList, Monitor, Package,
   AlertTriangle, User, LogOut, Video, ChevronDown, Bell, Clock, Plus
@@ -16,13 +18,11 @@ import ProfileView from './ProfileView';
 
 export default function LecturerDashboard() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
-  const [notifications, setNotifications] = useState<any[]>(() => getStorage<any[]>('system_notifications', []));
+  const { unreadCount } = useNotifications();
   const [showNotif, setShowNotif] = useState(false);
 
-  useDataSync('system_notifications', () => {
-    setNotifications(getStorage<any[]>('system_notifications', []));
-  });
   const [activeTab, setActiveTab] = useState('overview');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
@@ -85,15 +85,7 @@ export default function LecturerDashboard() {
     };
   }, []);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('access_token');
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
-    sessionStorage.removeItem('currentUser');
-    sessionStorage.removeItem('meetinghub_user');
-    setShowUserDropdown(false);
-    navigate('/login');
-  };
+  const handleLogout = logout;
 
   const menuGroups = [
     {
@@ -156,7 +148,7 @@ export default function LecturerDashboard() {
               {userProfile?.fullName || userProfile?.name || 'Giảng viên'}
             </div>
             <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '2px' }}>
-              Giảng viên
+              {['PARTICIPANT', 'student'].includes(userProfile?.role) ? 'Sinh viên' : 'Giảng viên'}
             </div>
           </div>
         </div>
@@ -241,11 +233,13 @@ export default function LecturerDashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{ position: 'relative' }}>
               <button
+                aria-label={`Thông báo, ${unreadCount} chưa đọc`}
+                aria-expanded={showNotif}
                 onClick={() => { setShowNotif(!showNotif); setShowUserDropdown(false); }}
                 style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: activeTab === 'overview' ? '#f8fafc' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <Bell size={20} />
-                <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', backgroundColor: '#ef4444', color: 'white', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: '2px solid white' }}>{notifications.length}</span>
+                <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', backgroundColor: '#ef4444', color: 'white', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: '2px solid white' }}>{unreadCount}</span>
               </button>
               {showNotif && (
                 <NotificationDropdown onClose={() => setShowNotif(false)} />

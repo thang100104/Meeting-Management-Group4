@@ -3,7 +3,9 @@ import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
+import asyncio
 from contextlib import asynccontextmanager
+from app.services.reminders import reminder_worker
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -21,7 +23,13 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     print(">> Khởi động ứng dụng thành công!")
-    yield
+    stop = asyncio.Event()
+    worker = asyncio.create_task(reminder_worker(stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        await worker
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

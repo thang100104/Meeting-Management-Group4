@@ -1,5 +1,5 @@
-﻿from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, roles, departments, rooms, meetings, equipments, equipment_requests
+from fastapi import APIRouter
+from app.api.v1.endpoints import auth, users, roles, departments, rooms, meetings, equipments, equipment_requests, notifications
 
 api_router = APIRouter()
 
@@ -12,3 +12,4 @@ api_router.include_router(meetings.router, prefix="/meetings", tags=["6. Äá�
 api_router.include_router(equipments.router, prefix="/equipments", tags=["7. Quáº£n lÃ½ & Äáº·t mÆ°á»£n Thiáº¿t bá»‹ (Equipments - US #12, #13, #14)"])
 
 api_router.include_router(equipment_requests.router, prefix="/equipment-requests", tags=["8. Yeu cau muon Thiet bi"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["Meeting reminders"])

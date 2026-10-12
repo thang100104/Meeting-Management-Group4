@@ -70,12 +70,9 @@ def create_meeting(
     current_user: User = Depends(get_current_active_user)
 ):
     try:
-        # ── 0. KIỂM TRA PHÂN QUYỀN RBAC ──
-        if current_user.role.role_name == "PARTICIPANT":
-            raise HTTPException(
-                status_code=403,
-                detail="Vai trò PARTICIPANT (Sinh viên) không có quyền tạo cuộc họp. Chỉ ADMIN hoặc ORGANIZER mới được phép."
-            )
+        # Sinh viên được gửi yêu cầu PENDING; chỉ Admin phê duyệt.
+        if not current_user.role or current_user.role.role_name not in ['ADMIN', 'ORGANIZER', 'LECTURER', 'PARTICIPANT']:
+            raise HTTPException(status_code=403, detail="Vai trò hiện tại không có quyền gửi yêu cầu đặt phòng")
 
         # ── 1. VALIDATION THỜI GIAN ──
         if data.start_time >= data.end_time:
@@ -100,6 +97,15 @@ def create_meeting(
                         status_code=403, 
                         detail=f"Vai trò '{current_user.role.role_name}' không có quyền đặt phòng '{room.room_name}'. Phòng này bị giới hạn quyền truy cập."
                     )
+
+        conflict_room = db.query(Meeting).filter(
+            Meeting.room_id == data.room_id,
+            Meeting.status.in_(['PENDING', 'SCHEDULED', 'APPROVED', 'IN_PROGRESS']),
+            Meeting.start_time < data.end_time,
+            Meeting.end_time > data.start_time,
+        ).first()
+        if conflict_room:
+            raise HTTPException(status_code=409, detail="Phòng đã có lịch trong khung giờ này. Vui lòng chọn giờ hoặc phòng khác.")
 
         # ── 4. KIỂM TRA THIẾT BỊ VÀ PHÁT HIỆN XUNG ĐỘT (Conflict Detection) ──
         if data.equipment_ids:
@@ -157,7 +163,7 @@ def create_meeting(
             for uid in set(data.participant_ids):
                 u = db.query(User).filter(User.user_id == uid).first()
                 if u:
-                    participant = MeetingParticipant(meeting_id=meeting.meeting_id, user_id=uid, status="PENDING")
+                    participant = MeetingParticipant(meeting_id=meeting.meeting_id, user_id=uid, rsvp_status="PENDING")
                     db.add(participant)
 
         # ── 7. GÁN THIẾT BỊ MƯỢN KÈM ──
@@ -538,6 +544,8 @@ def delete_meeting(
         # Xóa participants và equipment trước (cascade)
         db.query(MeetingParticipant).filter(MeetingParticipant.meeting_id == meeting_id).delete()
         db.query(MeetingEquipment).filter(MeetingEquipment.meeting_id == meeting_id).delete()
+        from app.models.notification import MeetingNotification
+        db.query(MeetingNotification).filter_by(meeting_id=meeting_id).delete()
         db.delete(meeting)
         log_action(db, current_user.user_id, "DELETE_MEETING", f"Đã xóa cuộc họp '{meeting.title}' (ID: {meeting_id})")
         db.commit()
