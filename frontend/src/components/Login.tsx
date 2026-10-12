@@ -73,8 +73,13 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     } catch (error: any) {
       console.error("Login API Error:", error);
       const detail = error.response?.data?.detail;
+      const statusCode = error.response?.status;
+      if (statusCode === 403 || (typeof detail === 'string' && (detail.includes('tạm khóa') || detail.includes('vô hiệu hóa')))) {
+        alert("⛔ TÀI KHOẢN ĐÃ BỊ TẠM KHÓA!\n\nTài khoản của bạn hiện đang bị Quản trị viên tạm khóa hoạt động.\nBạn không thể đăng nhập vào hệ thống lúc này. Vui lòng liên hệ Ban quản trị để được hỗ trợ mở khóa.");
+        return;
+      }
       const errorMsg = typeof detail === 'string' ? detail : 'Email hoặc mật khẩu không chính xác!';
-      alert(`[Lỗi Backend]: ${errorMsg}`);
+      alert(`[Lỗi Đăng nhập]: ${errorMsg}`);
     } finally {
       setLoading(false);
     }

@@ -162,12 +162,40 @@ export default function UserManagement() {
   const toggleUserStatus = async (id: string) => {
     const user = users.find(u => u.id === id);
     if (!user) return;
+    const isLocking = user.status === 'active';
+    const newStatus = isLocking ? 'INACTIVE' : 'ACTIVE';
+
     try {
-      await api.put(`/users/${id}`, { status: user.status === 'active' ? 'INACTIVE' : 'ACTIVE' });
+      await api.put(`/users/${id}`, { status: newStatus });
+
+      if (isLocking) {
+        // Broadcast khóa tài khoản real-time tới tất cả tab/trình duyệt
+        const lockPayload = {
+          userId: Number(id),
+          email: user.email.toLowerCase().trim(),
+          timestamp: Date.now()
+        };
+        localStorage.setItem('meetinghub_account_locked_event', JSON.stringify(lockPayload));
+        window.dispatchEvent(new CustomEvent('meetinghub_account_locked', { detail: lockPayload }));
+        alert(`🔒 ĐÃ TẠM KHÓA TÀI KHOẢN!\n\nNgười dùng: ${user.name} (${user.email})\nTrạng thái: Tạm khóa hoạt động.\n\nNếu tài khoản này đang đăng nhập trong hệ thống, phiên làm việc sẽ lập tức bị ngắt và tự động chuyển về màn hình đăng nhập.`);
+      } else {
+        // Mở khóa tài khoản
+        const currentLock = localStorage.getItem('meetinghub_account_locked_event');
+        if (currentLock) {
+          try {
+            const parsed = JSON.parse(currentLock);
+            if (parsed.email === user.email.toLowerCase().trim() || parsed.userId === Number(id)) {
+              localStorage.removeItem('meetinghub_account_locked_event');
+            }
+          } catch (e) {}
+        }
+        alert(`🔓 ĐÃ MỞ KHÓA TÀI KHOẢN!\n\nNgười dùng: ${user.name} (${user.email})\nTrạng thái: Đang hoạt động bình thường.`);
+      }
+
       fetchUsers();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Lỗi khi cập nhật trạng thái:", error);
-      alert("Không thể cập nhật trạng thái người dùng!");
+      alert(`[Lỗi]: ${error.response?.data?.detail || "Không thể cập nhật trạng thái người dùng!"}`);
     }
   };
 

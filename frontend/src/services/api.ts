@@ -20,7 +20,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Xử lý lỗi trả về chung (ví dụ: hết hạn token)
+// Xử lý lỗi trả về chung (ví dụ: hết hạn token hoặc bị tạm khóa)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -30,6 +30,21 @@ api.interceptors.response.use(
       sessionStorage.removeItem('token');
       sessionStorage.removeItem('user');
       window.dispatchEvent(new Event('storage')); // Gửi sự kiện để UI cập nhật
+    } else if (error.response && error.response.status === 403) {
+      const detail = error.response.data?.detail || '';
+      if (typeof detail === 'string' && (detail.includes('tạm khóa') || detail.includes('vô hiệu hóa'))) {
+        if (!sessionStorage.getItem('lock_alert_shown')) {
+          sessionStorage.setItem('lock_alert_shown', 'true');
+          alert('⛔ THÔNG BÁO:\nTài khoản của bạn đã bị Quản trị viên tạm khóa.\nPhiên làm việc kết thúc!');
+        }
+        sessionStorage.clear();
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('meetinghub_user');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

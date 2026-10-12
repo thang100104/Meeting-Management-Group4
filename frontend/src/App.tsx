@@ -61,6 +61,85 @@ export default function App() {
 
   useEffect(() => {
     initializeSystemData();
+
+    // ── LẮNG NGHE & TỰ ĐỘNG NGẮT PHIÊN KHI TÀI KHOẢN BỊ TẠM KHÓA ──
+    const kickOutLockedUser = () => {
+      if (!sessionStorage.getItem('lock_alert_shown')) {
+        sessionStorage.setItem('lock_alert_shown', 'true');
+        alert("⛔ TÀI KHOẢN ĐÃ BỊ TẠM KHÓA!\n\nTài khoản của bạn đã bị Quản trị viên tạm khóa hoạt động.\nPhiên làm việc hiện tại kết thúc và bạn sẽ được chuyển về màn hình đăng nhập!");
+      }
+      sessionStorage.clear();
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('meetinghub_user');
+      window.location.href = '/login';
+    };
+
+    const checkAccountLock = () => {
+      const rawUser = sessionStorage.getItem('user') || localStorage.getItem('user') || sessionStorage.getItem('currentUser');
+      if (!rawUser) return;
+
+      let currentLoggedIn: any = null;
+      try {
+        currentLoggedIn = JSON.parse(rawUser);
+      } catch (e) {
+        return;
+      }
+      if (!currentLoggedIn || !currentLoggedIn.email) return;
+
+      const userEmail = currentLoggedIn.email.toLowerCase().trim();
+      const userId = String(currentLoggedIn.id || currentLoggedIn.user_id || '');
+
+      // Kiểm tra sự kiện khóa được phát đi
+      const rawLockEvent = localStorage.getItem('meetinghub_account_locked_event');
+      if (rawLockEvent) {
+        try {
+          const lockData = JSON.parse(rawLockEvent);
+          if (
+            (lockData.email && lockData.email.toLowerCase().trim() === userEmail) ||
+            (lockData.userId && String(lockData.userId) === userId)
+          ) {
+            kickOutLockedUser();
+          }
+        } catch (e) {}
+      }
+    };
+
+    // Kiểm tra ngay khi tải trang và khi có sự kiện
+    checkAccountLock();
+    window.addEventListener('storage', checkAccountLock);
+    window.addEventListener('meetinghub_account_locked', checkAccountLock);
+
+    // Định kỳ 3 giây kiểm tra lại trạng thái thực tế từ backend
+    const intervalId = setInterval(async () => {
+      checkAccountLock();
+
+      const token = sessionStorage.getItem('access_token') || localStorage.getItem('access_token') || sessionStorage.getItem('token');
+      if (token) {
+        try {
+          const { default: api } = await import('./services/api');
+          const res = await api.get('/auth/me');
+          if (res.data && res.data.status !== 'ACTIVE') {
+            kickOutLockedUser();
+          }
+        } catch (err: any) {
+          if (err.response && err.response.status === 403) {
+            const detail = err.response.data?.detail || '';
+            if (typeof detail === 'string' && (detail.includes('tạm khóa') || detail.includes('vô hiệu hóa'))) {
+              kickOutLockedUser();
+            }
+          }
+        }
+      }
+    }, 3000);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('storage', checkAccountLock);
+      window.removeEventListener('meetinghub_account_locked', checkAccountLock);
+    };
   }, []);
 
   return (
