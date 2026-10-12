@@ -120,7 +120,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       window.dispatchEvent(new Event('userProfileUpdated'));
 
       const r = (finalUserData.role || '').toLowerCase();
-      if (r === 'lecturer' || r.includes('giảng viên')) {
+      if (r === 'lecturer' || r.includes('giảng viên') || r === 'organizer') {
         navigate('/lecturer');
       } else if (r === 'student' || r.includes('sinh viên') || r === 'participant') {
         navigate('/student');

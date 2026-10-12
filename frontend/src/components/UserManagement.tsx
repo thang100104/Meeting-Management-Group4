@@ -39,18 +39,29 @@ export default function UserManagement() {
   const fetchUsers = async () => {
     try {
       const res = await api.get('/users');
-      const apiUsers = res.data.map((u: any) => ({
-        id: u.user_id.toString(),
-        name: u.full_name,
-        email: u.email,
-        role: u.role?.role_name === 'ADMIN' ? 'Cán bộ phòng' : 
-               (u.role?.role_name === 'ORGANIZER' ? 'Giảng viên' : 'Sinh viên'),
-        identifier: u.employee_id || u.student_id || `ID-${u.user_id}`,
-        faculty: u.department?.department_name || 'Khác',
-        department: 'N/A',
-        status: u.status === 'ACTIVE' ? 'active' : 'locked',
-        avatar: u.avatar_url
-      }));
+      const apiUsers = res.data.map((u: any) => {
+        const rName = (u.role?.role_name || '').toUpperCase();
+        let displayRole: 'Giảng viên' | 'Sinh viên' | 'Cán bộ phòng' = 'Sinh viên';
+        if (rName === 'ADMIN' || u.role_id === 1) {
+          displayRole = 'Cán bộ phòng';
+        } else if (rName === 'LECTURER' || rName === 'ORGANIZER' || u.role_id === 2 || u.role_id === 4) {
+          displayRole = 'Giảng viên';
+        } else {
+          displayRole = 'Sinh viên';
+        }
+
+        return {
+          id: u.user_id.toString(),
+          name: u.full_name,
+          email: u.email,
+          role: displayRole,
+          identifier: u.employee_id || u.student_id || (displayRole === 'Giảng viên' ? `GV-${u.user_id}` : (displayRole === 'Cán bộ phòng' ? `CB-${u.user_id}` : `SV-${u.user_id}`)),
+          faculty: u.department?.department_name || (displayRole === 'Giảng viên' ? 'Khoa CNTT' : 'Khác'),
+          department: 'N/A',
+          status: u.status === 'ACTIVE' ? 'active' : 'locked',
+          avatar: u.avatar_url
+        };
+      });
       setUsers(apiUsers);
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -108,19 +119,44 @@ export default function UserManagement() {
     setIsModalOpen(true);
   };
 
-  const handleSaveModal = (e: React.FormEvent) => {
+  const handleSaveModal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.email || !formData.identifier) {
+    if (!formData.name || !formData.email) {
       alert("Vui lòng điền đầy đủ các thông tin bắt buộc!");
       return;
     }
 
-    if (editingUser) {
-      setUsers(users.map(u => u.id === editingUser.id ? { ...u, ...formData } as User : u));
-    } else {
-      setUsers([{ ...formData, id: Date.now().toString() } as User, ...users]);
+    const roleIdMap: Record<string, number> = {
+      'Cán bộ phòng': 1,
+      'Giảng viên': 2,
+      'Sinh viên': 3
+    };
+    const targetRoleId = roleIdMap[formData.role || 'Sinh viên'] || 3;
+
+    try {
+      if (editingUser) {
+        await api.put(`/users/${editingUser.id}`, {
+          full_name: formData.name,
+          role_id: targetRoleId,
+          status: formData.status === 'active' ? 'ACTIVE' : 'INACTIVE'
+        });
+        alert("✓ Cập nhật thông tin và vai trò người dùng thành công!");
+      } else {
+        await api.post('/users', {
+          email: formData.email,
+          full_name: formData.name,
+          password: 'password123',
+          role_id: targetRoleId,
+          status: formData.status === 'active' ? 'ACTIVE' : 'INACTIVE'
+        });
+        alert("✓ Thêm người dùng mới thành công!");
+      }
+      setIsModalOpen(false);
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Lỗi khi lưu người dùng:", error);
+      alert(`[Lỗi]: ${error.response?.data?.detail || 'Không thể lưu người dùng!'}`);
     }
-    setIsModalOpen(false);
   };
 
   const toggleUserStatus = async (id: string) => {
