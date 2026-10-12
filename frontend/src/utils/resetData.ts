@@ -1,4 +1,5 @@
 import { setStorage } from './syncHelper';
+import { DEFAULT_NOTIFICATIONS } from './notificationService';
 
 export const initializeSystemData = (forceReset: boolean = false) => {
   const isInitialized = localStorage.getItem('sys_init_v2');
@@ -120,61 +121,7 @@ export const initializeSystemData = (forceReset: boolean = false) => {
     return d.toISOString().split('T')[0];
   };
 
-  const initialBookings = [
-    {
-      id: 'B1',
-      roomId: 'ROOM_1',
-      roomName: 'Phòng Hội trường A1',
-      userId: 'lecturer_1',
-      userName: 'Hoàng Thanh Phương',
-      date: getFormattedDate(0),
-      timeSlot: '08:00 - 11:30',
-      purpose: 'Hội thảo Công nghệ mới 2026',
-      status: 'Đã duyệt',
-      createdAt: new Date().toISOString(),
-      participants: 150
-    },
-    {
-      id: 'B2',
-      roomId: 'ROOM_2',
-      roomName: 'Giảng đường C102',
-      userId: 'lecturer_1',
-      userName: 'Hoàng Thanh Phương',
-      date: getFormattedDate(1),
-      timeSlot: '13:00 - 15:30',
-      purpose: 'Dạy bù môn Cấu trúc dữ liệu',
-      status: 'Chờ duyệt',
-      createdAt: new Date().toISOString(),
-      participants: 70
-    },
-    {
-      id: 'B3',
-      roomId: 'ROOM_3',
-      roomName: 'Phòng B201',
-      userId: 'lecturer_1',
-      userName: 'Hoàng Thanh Phương',
-      date: getFormattedDate(2),
-      timeSlot: '09:00 - 11:00',
-      purpose: 'Họp bộ môn định kỳ',
-      status: 'Từ chối',
-      reason: 'Phòng đang bảo trì định kỳ',
-      createdAt: new Date().toISOString(),
-      participants: 15
-    },
-    {
-      id: 'B4',
-      roomId: 'ROOM_1',
-      roomName: 'Phòng Hội trường A1',
-      userId: 'admin_1',
-      userName: 'Quản trị viên',
-      date: getFormattedDate(3),
-      timeSlot: '14:00 - 17:00',
-      purpose: 'Đón tiếp đoàn thanh tra',
-      status: 'Đã duyệt',
-      createdAt: new Date().toISOString(),
-      participants: 50
-    }
-  ];
+  const initialBookings: any[] = [];
   setStorage('room_bookings', initialBookings);
   setStorage('meetinghub_room_requests', initialBookings);
 
@@ -242,24 +189,7 @@ export const initializeSystemData = (forceReset: boolean = false) => {
     }
   ];
   setStorage('incident_reports', initialIncidents);
-  setStorage('system_notifications', [
-    {
-      id: 'NOTIF1',
-      userId: 'lecturer_1',
-      title: 'Yêu cầu mượn thiết bị đã được duyệt',
-      message: 'Yêu cầu mượn Máy chiếu Sony 4K của bạn đã được duyệt.',
-      isRead: false,
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'NOTIF2',
-      userId: 'lecturer_1',
-      title: 'Báo cáo sự cố đang được xử lý',
-      message: 'Sự cố "Điều hòa không mát" tại C102 đang được kỹ thuật viên kiểm tra.',
-      isRead: false,
-      createdAt: new Date().toISOString()
-    }
-  ]);
+  setStorage('system_notifications', DEFAULT_NOTIFICATIONS);
 
   // Mark as initialized
   localStorage.setItem('sys_init_v2', 'true');

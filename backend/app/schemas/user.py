@@ -24,6 +24,7 @@ class UserUpdate(BaseModel):
     department_id: Optional[int] = None
     status: Optional[str] = None
     password: Optional[str] = None
+    password: Optional[str] = None
 
 class UserChangePassword(BaseModel):
     old_password: str
@@ -46,3 +47,10 @@ class UserOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    full_name: str
+    password: str
+    role_name: str

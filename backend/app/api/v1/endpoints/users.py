@@ -81,6 +81,58 @@ def create_user(
     db.refresh(new_user)
     return new_user
 
+@router.get("/lecturers", summary="Lấy danh sách giảng viên phục vụ liên hệ/chat")
+def get_lecturers_list(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user)
+):
+    lecturer_role = db.query(Role).filter(Role.role_name == "LECTURER").first()
+    if not lecturer_role:
+        return []
+    lecturers = db.query(User).filter(
+        User.role_id == lecturer_role.role_id,
+        User.status == "ACTIVE"
+    ).all()
+    return [
+        {
+            "id": u.user_id,
+            "user_id": u.user_id,
+            "full_name": u.full_name,
+            "name": u.full_name,
+            "email": u.email,
+            "role": "lecturer",
+            "department": u.department.department_name if u.department else "Khoa CNTT",
+            "avatar": u.avatar_url or f"https://ui-avatars.com/api/?name={u.full_name}&background=3b82f6&color=fff"
+        }
+        for u in lecturers
+    ]
+
+@router.get("/students", summary="Lấy danh sách sinh viên phục vụ liên hệ/chat")
+def get_students_list(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_active_user)
+):
+    student_role = db.query(Role).filter(Role.role_name == "PARTICIPANT").first()
+    if not student_role:
+        return []
+    students = db.query(User).filter(
+        User.role_id == student_role.role_id,
+        User.status == "ACTIVE"
+    ).all()
+    return [
+        {
+            "id": u.user_id,
+            "user_id": u.user_id,
+            "full_name": u.full_name,
+            "name": u.full_name,
+            "email": u.email,
+            "role": "student",
+            "department": u.department.department_name if u.department else "Sinh viên",
+            "avatar": u.avatar_url or f"https://ui-avatars.com/api/?name={u.full_name}&background=10b981&color=fff"
+        }
+        for u in students
+    ]
+
 @router.get("/{user_id}", response_model=UserOut, summary="Xem thông tin chi tiết người dùng")
 def get_user_detail(
     user_id: int,
@@ -137,9 +189,10 @@ def update_user(
     db.refresh(user)
     return user
 
-@router.delete("/{user_id}", summary="Vô hiệu hóa tài khoản (Chỉ Admin)")
+@router.delete("/{user_id}", summary="Vô hiệu hóa hoặc xóa tài khoản (Chỉ Admin)")
 def deactivate_user(
     user_id: int,
+    hard_delete: bool = Query(False, description="Nếu true sẽ xóa hoàn toàn user khỏi hệ thống"),
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_roles(["ADMIN"]))
 ):
@@ -147,6 +200,11 @@ def deactivate_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Người dùng không tồn tại")
     
-    user.status = "INACTIVE"
-    db.commit()
-    return {"message": f"Tài khoản {user.email} đã được chuyển sang trạng thái INACTIVE (vô hiệu hóa)"}
+    if hard_delete:
+        db.delete(user)
+        db.commit()
+        return {"message": f"Tài khoản {user.email} đã được xóa hoàn toàn"}
+    else:
+        user.status = "INACTIVE"
+        db.commit()
+        return {"message": f"Tài khoản {user.email} đã được chuyển sang trạng thái INACTIVE (vô hiệu hóa)"}

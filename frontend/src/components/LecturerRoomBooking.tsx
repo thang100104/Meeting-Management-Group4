@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin, Users, Calendar, Clock, X, Check, Monitor, AlertTriangle } from 'lucide-react';
 import { getStorage, setStorage } from '../utils/syncHelper';
+import { addNotification } from '../utils/notificationService';
 
 import api from '../services/api';
 
@@ -127,6 +128,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
   const [capacityFilter, setCapacityFilter] = useState('all');
 
   const [bookedRoomIds, setBookedRoomIds] = useState<string[]>([]);
+  const [bookedEquipmentIds, setBookedEquipmentIds] = useState<number[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -143,17 +145,24 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
           const selectedEnd = new Date(`${date}T${times[1]}:00`).getTime();
 
           const bookedIds: string[] = [];
+          const bookedEqIds: number[] = [];
           res.data.forEach((meeting: any) => {
-            if (meeting.status !== 'CANCELLED' && meeting.status !== 'COMPLETED') {
+            if (meeting.status !== 'CANCELLED' && meeting.status !== 'COMPLETED' && meeting.status !== 'REJECTED') {
               const mStart = new Date(meeting.start_time).getTime();
               const mEnd = new Date(meeting.end_time).getTime();
 
               if (mStart < selectedEnd && mEnd > selectedStart) {
                 bookedIds.push(meeting.room_id.toString());
+                if (meeting.equipments && meeting.equipments.length > 0) {
+                  meeting.equipments.forEach((eq: any) => {
+                    bookedEqIds.push(eq.equipment_id || eq.id);
+                  });
+                }
               }
             }
           });
           setBookedRoomIds(bookedIds);
+          setBookedEquipmentIds(bookedEqIds);
         }
       } catch (err) {
         console.error("Lỗi lấy lịch họp", err);
@@ -161,6 +170,26 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
     };
     fetchMeetings();
   }, [date, timeSlot]);
+
+  // ─── Fetch danh sách thiết bị ──────────────────────────────────────────────
+  const [availableEquipments, setAvailableEquipments] = useState<any[]>([]);
+  const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    const fetchEquipments = async () => {
+      try {
+        const res = await api.get('/equipments');
+        if (res.data) {
+          // Lấy tất cả thiết bị AVAILABLE (bao gồm cả thiết bị di động và cố định ở phòng khác)
+          const available = res.data.filter((eq: any) => eq.status === 'AVAILABLE');
+          setAvailableEquipments(available);
+        }
+      } catch (err) {
+        console.error("Lỗi lấy danh sách thiết bị", err);
+      }
+    };
+    fetchEquipments();
+  }, []);
 
   // Booking form state
   const [title, setTitle] = useState('');
@@ -186,6 +215,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
     setType('Họp bộ môn');
     setAttendees(room.capacity.toString());
     setNotes('');
+    setSelectedEquipmentIds([]);
   };
 
   const submitBooking = async (e: React.FormEvent) => {
@@ -206,10 +236,12 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
         description: notes || '',
         start_time,
         end_time,
-        meeting_type: type
+        meeting_type: type,
+        equipment_ids: selectedEquipmentIds
       };
 
-      await api.post('/meetings', newBookingAPI);
+      const res = await api.post('/meetings', newBookingAPI);
+      const newMeetingId = res.data?.meeting_id || Date.now().toString();
 
       const currentUserStr = localStorage.getItem('user') || sessionStorage.getItem('user') || '{}';
       let currentUser: any = {};
@@ -217,7 +249,7 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
 
       // Lưu LocalStorage để sync Badge bên Sidebar
       const mockBooking = {
-        id: Date.now().toString(),
+        id: newMeetingId.toString(),
         roomId: selectedRoom.id,
         roomName: selectedRoom.name,
         userId: currentUser.id || currentUser.email || userProfile?.email,
@@ -230,7 +262,18 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
         date,
         timeSlot,
         purpose: title,
+        description: notes || '',
         participants: parseInt(attendees) || 0,
+        equipmentIds: selectedEquipmentIds,
+        equipments: selectedEquipmentIds.map((id: number) => {
+          const eq = availableEquipments.find((e: any) => e.id === id || e.equipment_id === id);
+          return {
+            equipment_id: id,
+            equipment_name: eq ? eq.name || eq.equipment_name : 'Thiết bị #' + id,
+            equipment_type: eq ? eq.type || eq.equipment_type : 'N/A',
+            serial_number: eq ? eq.serial_number : 'N/A'
+          };
+        }),
         status: 'Chờ duyệt',
         createdAt: new Date().toISOString()
       };
@@ -247,6 +290,16 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
 
       currentRequests.unshift(mockBooking);
       localStorage.setItem('meetinghub_room_requests', JSON.stringify(currentRequests));
+
+      // Push notification cho Quản trị viên (Admin)
+      addNotification({
+        title: `Yêu cầu đặt phòng mới từ ${mockBooking.userName}`,
+        content: `Phòng '${selectedRoom.name}' cho cuộc họp '${title}' (${date} ${timeSlot}) đang chờ bạn phê duyệt.`,
+        targetRole: 'admin',
+        senderRole: 'lecturer',
+        senderName: mockBooking.userName,
+        type: 'booking'
+      });
 
       window.dispatchEvent(new Event('request-updated'));
       window.dispatchEvent(new Event('storage'));
@@ -525,6 +578,31 @@ export default function LecturerRoomBooking({ userProfile }: { userProfile: any 
                   style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #cbd5e1', fontSize: '15px', outline: 'none', minHeight: '100px', resize: 'vertical' }}
                   className="focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 ></textarea>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '8px' }}>Mượn thêm thiết bị</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', maxHeight: '150px', overflowY: 'auto', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
+                  {availableEquipments.filter(eq => !bookedEquipmentIds.includes(eq.equipment_id || eq.id) && (eq.room_id == null || eq.room_id != selectedRoom?.id)).length > 0 ? availableEquipments.filter(eq => !bookedEquipmentIds.includes(eq.equipment_id || eq.id) && (eq.room_id == null || eq.room_id != selectedRoom?.id)).map(eq => (
+                    <label key={eq.equipment_id || eq.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: '#475569' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedEquipmentIds.includes(eq.equipment_id || eq.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedEquipmentIds(prev => [...prev, eq.equipment_id || eq.id]);
+                          } else {
+                            setSelectedEquipmentIds(prev => prev.filter(id => id !== (eq.equipment_id || eq.id)));
+                          }
+                        }}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      <span>{eq.equipment_name || eq.name} {eq.code || eq.equipment_serial ? `(${eq.code || eq.equipment_serial})` : ''}</span>
+                    </label>
+                  )) : (
+                    <div style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', gridColumn: '1 / -1' }}>Không có thiết bị khả dụng (hoặc đã bị mượn hết trong khung giờ này)</div>
+                  )}
+                </div>
               </div>
 
               {/* Modal Footer */}

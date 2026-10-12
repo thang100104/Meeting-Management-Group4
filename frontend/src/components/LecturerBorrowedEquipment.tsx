@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Package, Clock, AlertTriangle, CheckCircle, Info, Calendar, MapPin, Wrench, X } from 'lucide-react';
+import api from '../services/api';
 
 interface BorrowedItem {
   id: string;
@@ -9,14 +10,14 @@ interface BorrowedItem {
   location: string;
   borrowTime: string; // e.g. "07:00 - 30/09/2026"
   returnDeadline: string; // e.g. "11:30 - 30/09/2026"
-  status: 'Đang mượn' | 'Đã trả';
+  status: 'Đang mượn' | 'Đã trả' | 'Chờ duyệt' | 'Từ chối';
   isOverdue: boolean;
   lecturerEmail?: string;
 }
 
 export default function LecturerBorrowedEquipment({ userProfile }: { userProfile: any }) {
   const [borrowedItems, setBorrowedItems] = useState<BorrowedItem[]>([]);
-  const [activeTab, setActiveTab] = useState<'Đang mượn' | 'Đã trả'>('Đang mượn');
+  const [activeTab, setActiveTab] = useState<'Đang mượn' | 'Đã trả' | 'Chờ duyệt' | 'Từ chối'>('Đang mượn');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Return Modal State
@@ -48,84 +49,47 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
     };
   }, [userProfile]);
 
-  const loadBorrowedItems = () => {
-    const saved = localStorage.getItem('meetinghub_borrowed_items');
-    const userEmail = userProfile?.email;
+  const loadBorrowedItems = async () => {
+    try {
+      const res = await api.get('/equipment-requests/my');
+      const currentDate = new Date();
+      
+      const formatTime = (isoString: string) => {
+        const d = new Date(isoString);
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${hh}:${mm} - ${dd}/${mo}/${yyyy}`;
+      };
 
-    let allItems: BorrowedItem[] = saved ? JSON.parse(saved) : [];
-    let myItems = allItems.filter(item => item.lecturerEmail === userEmail);
-
-    if (myItems.length === 0 && userEmail) {
-      const mockData: BorrowedItem[] = [
-        {
-          id: 'BORROW_01',
-          equipmentCode: 'SN-MC-045',
-          equipmentName: 'Micro không dây Shure',
-          quantity: 2,
-          location: 'Phòng A102 - Lập trình Web',
-          borrowTime: '07:00 - 30/09/2026',
-          returnDeadline: '11:30 - 30/09/2026',
-          status: 'Đang mượn',
-          isOverdue: false,
-          lecturerEmail: userEmail
-        },
-        {
-          id: 'BORROW_02',
-          equipmentCode: 'SN-LT-102',
-          equipmentName: 'Laptop trình chiếu',
-          quantity: 1,
-          location: 'Phòng B201 - CSDL',
-          borrowTime: '13:30 - 30/09/2026',
-          returnDeadline: '17:00 - 30/09/2026',
-          status: 'Đang mượn',
-          isOverdue: false,
-          lecturerEmail: userEmail
-        },
-        {
-          id: 'BORROW_03',
-          equipmentCode: 'SN-PJ-001',
-          equipmentName: 'Máy chiếu 4K Sony',
-          quantity: 1,
-          location: 'Phòng C101',
-          borrowTime: '07:00 - 29/09/2026',
-          returnDeadline: '11:30 - 29/09/2026',
-          status: 'Đã trả',
-          isOverdue: false,
-          lecturerEmail: userEmail
-        },
-        {
-          id: 'BORROW_04',
-          equipmentCode: 'SN-CM-003',
-          equipmentName: 'Bộ camera họp trực tuyến Logitech',
-          quantity: 1,
-          location: 'Phòng B205',
-          borrowTime: '07:00 - 28/09/2026',
-          returnDeadline: '17:00 - 28/09/2026',
-          status: 'Đang mượn',
-          isOverdue: true,
-          lecturerEmail: userEmail
-        }
-      ];
-      allItems = [...allItems, ...mockData];
-      localStorage.setItem('meetinghub_borrowed_items', JSON.stringify(allItems));
-      myItems = mockData;
+      const mapped = res.data.map((req: any) => {
+        let mappedStatus: 'Đang mượn' | 'Đã trả' | 'Chờ duyệt' | 'Từ chối' = 'Chờ duyệt';
+        if (req.status === 'APPROVED') mappedStatus = 'Đang mượn';
+        else if (req.status === 'RETURNED') mappedStatus = 'Đã trả';
+        else if (req.status === 'REJECTED') mappedStatus = 'Từ chối';
+        
+        const endDate = new Date(req.end_time);
+        const isOverdue = endDate < currentDate && req.status === 'APPROVED';
+        
+        return {
+          id: req.id.toString(),
+          equipmentCode: req.equipment_serial || `EQ-${req.equipment_id}`,
+          equipmentName: req.equipment_name || 'Thiết bị',
+          quantity: req.quantity || 1,
+          location: req.use_location || '',
+          borrowTime: formatTime(req.start_time),
+          returnDeadline: formatTime(req.end_time),
+          status: mappedStatus,
+          isOverdue: isOverdue,
+          lecturerEmail: userProfile?.email
+        };
+      });
+      setBorrowedItems(mapped);
+    } catch(err) {
+      console.error("Lỗi lấy danh sách thiết bị mượn", err);
     }
-
-    const currentDate = new Date();
-    myItems = myItems.map(item => {
-      const parts = item.returnDeadline.split(' - ');
-      if (parts.length === 2) {
-        const [timePart, datePart] = parts;
-        const [hours, minutes] = timePart.split(':');
-        const [day, month, year] = datePart.split('/');
-        const deadlineDate = new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes));
-        const isOverdue = deadlineDate < currentDate && item.status === 'Đang mượn';
-        return { ...item, isOverdue };
-      }
-      return item;
-    });
-
-    setBorrowedItems(myItems);
   };
 
   const activeOverdueItems = borrowedItems.filter(i => i.isOverdue && i.status === 'Đang mượn');
@@ -149,23 +113,20 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
     setReturnNotes('');
   };
 
-  const handleReturnSubmit = (e: React.FormEvent) => {
+  const handleReturnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItem) return;
 
-    const saved = localStorage.getItem('meetinghub_borrowed_items');
-    if (saved) {
-      const allItems: BorrowedItem[] = JSON.parse(saved);
-      const updated = allItems.map(item =>
-        item.id === selectedItem.id ? { ...item, status: 'Đã trả' as const, actualReturnDate: new Date().toISOString() } : item
-      );
-      localStorage.setItem('meetinghub_borrowed_items', JSON.stringify(updated));
+    try {
+      await api.patch(`/equipment-requests/${selectedItem.id}/status`, { status: 'RETURNED' });
+      alert(`Đã báo trả [${selectedItem.equipmentName}] thành công!`);
+      setIsReturnModalOpen(false);
+      loadBorrowedItems();
+      window.dispatchEvent(new Event('borrowedEquipmentsUpdated'));
+    } catch (error) {
+      console.error("Lỗi báo trả", error);
+      alert("Lỗi khi báo trả thiết bị.");
     }
-
-    alert(`Đã báo trả [${selectedItem.equipmentName}] thành công!`);
-    setIsReturnModalOpen(false);
-
-    window.dispatchEvent(new Event('borrowedEquipmentsUpdated'));
   };
 
   const handleReportIssue = (item: BorrowedItem) => {
@@ -204,6 +165,12 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
   const getStatusBadge = (item: BorrowedItem) => {
     if (item.status === 'Đã trả') {
       return <span className="bg-slate-100 text-slate-600 text-xs font-medium px-2.5 py-1 rounded-md">Đã trả</span>;
+    }
+    if (item.status === 'Chờ duyệt') {
+      return <span className="bg-amber-50 text-amber-600 border border-amber-200/60 text-xs font-medium px-2.5 py-1 rounded-md">Chờ duyệt</span>;
+    }
+    if (item.status === 'Từ chối') {
+      return <span className="bg-red-50 text-red-600 border border-red-200/60 text-xs font-medium px-2.5 py-1 rounded-md">Từ chối</span>;
     }
     if (item.isOverdue) {
       return <span className="bg-rose-50 text-rose-700 border border-rose-200/60 text-xs font-medium px-2.5 py-1 rounded-md">Quá hạn trả</span>;
@@ -254,7 +221,7 @@ export default function LecturerBorrowedEquipment({ userProfile }: { userProfile
 
         {/* Tabs */}
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {['Đang mượn', 'Đã trả'].map(tab => (
+          {['Đang mượn', 'Chờ duyệt', 'Đã trả', 'Từ chối'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}

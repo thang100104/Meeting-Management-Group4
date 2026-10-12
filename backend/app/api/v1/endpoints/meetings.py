@@ -113,22 +113,22 @@ def create_meeting(
                         detail=f"Thiết bị '{eq.equipment_name}' đang ở trạng thái {eq.status}, không thể mượn"
                     )
 
-                conflict_eq = (
-                    db.query(Meeting)
-                    .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
-                    .filter(
-                        MeetingEquipment.equipment_id == eq_id,
-                        Meeting.status != "CANCELLED",
-                        Meeting.start_time < data.end_time,
-                        Meeting.end_time > data.start_time
-                    )
-                    .first()
-                )
-                if conflict_eq:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Trùng lịch thiết bị! Thiết bị '{eq.equipment_name}' đã được đăng ký mượn cho cuộc họp '{conflict_eq.title}' ({conflict_eq.start_time.strftime('%H:%M')} - {conflict_eq.end_time.strftime('%H:%M')})"
-                    )
+                # conflict_eq = (
+                #     db.query(Meeting)
+                #     .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
+                #     .filter(
+                #         MeetingEquipment.equipment_id == eq_id,
+                #         Meeting.status != "CANCELLED",
+                #         Meeting.start_time < data.end_time,
+                #         Meeting.end_time > data.start_time
+                #     )
+                #     .first()
+                # )
+                # if conflict_eq:
+                #     raise HTTPException(
+                #         status_code=409,
+                #         detail=f"Trùng lịch thiết bị! Thiết bị '{eq.equipment_name}' đã được đăng ký mượn cho cuộc họp '{conflict_eq.title}' ({conflict_eq.start_time.strftime('%H:%M')} - {conflict_eq.end_time.strftime('%H:%M')})"
+                #     )
 
         # ── 5. TẠO CUỘC HỌP (Transaction) ──
         # Mặc định: ADMIN tạo thì duyệt luôn (SCHEDULED), ORGANIZER thì PENDING chờ duyệt nếu cấu hình, hoặc SCHEDULED
@@ -285,23 +285,23 @@ def update_meeting(
                     detail=f"Thiết bị '{eq.equipment_name}' đang ở trạng thái {eq.status}, không thể mượn"
                 )
 
-            conflict_eq = (
-                db.query(Meeting)
-                .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
-                .filter(
-                    MeetingEquipment.equipment_id == eq_id,
-                    Meeting.meeting_id != meeting_id,
-                    Meeting.status.in_(["PENDING", "APPROVED"]),
-                    Meeting.start_time < new_et,
-                    Meeting.end_time > new_st
-                )
-                .first()
-            )
-            if conflict_eq:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Trùng lịch thiết bị! Thiết bị '{eq.equipment_name}' đã được đăng ký mượn cho cuộc họp khác"
-                )
+            # conflict_eq = (
+            #     db.query(Meeting)
+            #     .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
+            #     .filter(
+            #         MeetingEquipment.equipment_id == eq_id,
+            #         Meeting.meeting_id != meeting_id,
+            #         Meeting.status.in_(["PENDING", "APPROVED"]),
+            #         Meeting.start_time < new_et,
+            #         Meeting.end_time > new_st
+            #     )
+            #     .first()
+            # )
+            # if conflict_eq:
+            #     raise HTTPException(
+            #         status_code=409,
+            #         detail=f"Trùng lịch thiết bị! Thiết bị '{eq.equipment_name}' đã được đăng ký mượn cho cuộc họp khác"
+            #     )
             
     if data.room_id is not None: meeting.room_id = data.room_id
     if data.title is not None: meeting.title = data.title
@@ -417,24 +417,24 @@ def approve_meeting(
     if meeting.meeting_equipments:
         for me in meeting.meeting_equipments:
             eq_id = me.equipment_id
-            conflict_eq = (
-                db.query(Meeting)
-                .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
-                .filter(
-                    MeetingEquipment.equipment_id == eq_id,
-                    Meeting.meeting_id != meeting.meeting_id,
-                    Meeting.status.in_(["SCHEDULED", "APPROVED", "IN_PROGRESS"]),
-                    Meeting.start_time < meeting.end_time,
-                    Meeting.end_time > meeting.start_time
-                )
-                .first()
-            )
-            if conflict_eq:
-                eq_name = me.equipment.equipment_name if me.equipment else f"ID {eq_id}"
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Trùng thiết bị! Thiết bị '{eq_name}' đã được duyệt sử dụng cho cuộc họp '{conflict_eq.title}'."
-                )
+            # conflict_eq = (
+            #     db.query(Meeting)
+            #     .join(MeetingEquipment, Meeting.meeting_id == MeetingEquipment.meeting_id)
+            #     .filter(
+            #         MeetingEquipment.equipment_id == eq_id,
+            #         Meeting.meeting_id != meeting.meeting_id,
+            #         Meeting.status.in_(["SCHEDULED", "APPROVED", "IN_PROGRESS"]),
+            #         Meeting.start_time < meeting.end_time,
+            #         Meeting.end_time > meeting.start_time
+            #     )
+            #     .first()
+            # )
+            # if conflict_eq:
+            #     eq_name = me.equipment.equipment_name if me.equipment else f"ID {eq_id}"
+            #     raise HTTPException(
+            #         status_code=409,
+            #         detail=f"Trùng thiết bị! Thiết bị '{eq_name}' đã được duyệt sử dụng cho cuộc họp '{conflict_eq.title}'."
+            #     )
 
     meeting.status = "SCHEDULED"
     note_text = f" - Ghi chú: {data.note}" if (data and data.note) else ""
@@ -465,6 +465,8 @@ def reject_meeting(
         raise HTTPException(status_code=404, detail="Không tìm thấy lịch họp cần từ chối")
 
     meeting.status = "REJECTED"
+    if data and data.reason:
+        meeting.reject_reason = data.reason
     reason_text = f" (Lý do: {data.reason})" if (data and data.reason) else ""
     log_action(db, current_user.user_id, "REJECT_MEETING", f"Admin từ chối cuộc họp '{meeting.title}' (ID: {meeting.meeting_id}){reason_text}")
     db.commit()

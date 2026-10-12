@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Video, Monitor, CalendarDays,
@@ -10,6 +10,8 @@ import { NotificationDropdown } from './NotificationDropdown';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
+import { getNotificationsForRole, type SystemNotification } from '../utils/notificationService';
+
 export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -18,11 +20,44 @@ export default function MainLayout() {
 
   const [showNotif, setShowNotif] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: 'Yêu cầu phòng Lab 3', time: '5 phút trước' },
-    { id: 2, title: 'Cập nhật hệ thống', time: '1 giờ trước' },
-    { id: 3, title: 'Báo cáo tháng', time: '2 giờ trước' }
-  ]);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [notifications, setNotifications] = useState<SystemNotification[]>(() => 
+    getNotificationsForRole('admin')
+  );
+
+  const refreshNotifs = () => {
+    setNotifications(getNotificationsForRole('admin'));
+  };
+
+  useEffect(() => {
+    refreshNotifs();
+    window.addEventListener('storage', refreshNotifs);
+    window.addEventListener('appDataSync', refreshNotifs);
+    window.addEventListener('system-notification-updated', refreshNotifs);
+    return () => {
+      window.removeEventListener('storage', refreshNotifs);
+      window.removeEventListener('appDataSync', refreshNotifs);
+      window.removeEventListener('system-notification-updated', refreshNotifs);
+    };
+  }, []);
+
+  // Click outside listener
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotif(false);
+      }
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setShowUserDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleLogout = () => {
     sessionStorage.removeItem('token');
@@ -101,7 +136,7 @@ export default function MainLayout() {
     {
       group: 'QUẢN TRỊ & THỐNG KÊ',
       items: [
-        { id: '/notifications', label: 'Gửi thông báo', icon: <MessageSquare size={20} /> },
+        { id: '/notifications', label: 'Hỗ trợ & Báo cáo', icon: <MessageSquare size={20} /> },
         { id: '/users', label: 'Quản lý người dùng', icon: <Users size={20} /> },
         { id: '/reports', label: 'Báo cáo & Thống kê', icon: <FileText size={20} /> },
       ]
@@ -275,41 +310,53 @@ export default function MainLayout() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
 
               {/* 1. QUẢ CHUÔNG THÔNG BÁO */}
-              <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setShowNotif(!showNotif)}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                {/* Badge Đỏ Số 7 */}
-                <span style={{
-                  position: 'absolute',
-                  top: '-6px',
-                  right: '-6px',
-                  backgroundColor: '#ef4444',
-                  color: '#ffffff',
-                  fontSize: '10px',
-                  fontWeight: 'bold',
-                  width: '18px',
-                  height: '18px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '2px solid #1b1c3a'
-                }}>
-                  {notifications.length}
-                </span>
+              <div ref={notifRef} style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNotif(prev => !prev);
+                    setShowUserDropdown(false);
+                  }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Thông báo"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                  {/* Badge Đỏ Số Thông báo chưa đọc */}
+                  {notifications.filter(n => !n.isRead).length > 0 && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '-6px',
+                      right: '-6px',
+                      backgroundColor: '#ef4444',
+                      color: '#ffffff',
+                      fontSize: '10px',
+                      fontWeight: 'bold',
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '2px solid #1b1c3a'
+                    }}>
+                      {notifications.filter(n => !n.isRead).length}
+                    </span>
+                  )}
+                </button>
                 {/* Dropdown Thông báo */}
                 {showNotif && (
-                  <NotificationDropdown onClose={() => setShowNotif(false)} />
+                  <NotificationDropdown onClose={() => setShowNotif(false)} role="admin" />
                 )}
               </div>
 
               {/* 2. AVATAR + HOÀNG THANH */}
-              <div style={{ position: 'relative' }}>
+              <div ref={userDropdownRef} style={{ position: 'relative' }}>
                 <button
                   type="button"
-                  onClick={() => { setShowUserDropdown(!showUserDropdown); setShowNotif(false); }}
+                  onClick={() => { setShowUserDropdown(prev => !prev); setShowNotif(false); }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

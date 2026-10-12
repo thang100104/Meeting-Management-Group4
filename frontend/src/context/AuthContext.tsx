@@ -79,6 +79,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('user');
     localStorage.removeItem('currentUser');
     localStorage.removeItem('meetinghub_user');
+    localStorage.removeItem('meetinghub_room_requests');
+    localStorage.removeItem('room_bookings');
+    localStorage.removeItem('meetinghub_equipment_requests');
+    localStorage.removeItem('equipment_requests');
     
     setUser(null);
     window.location.href = '/login';

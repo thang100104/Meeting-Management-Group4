@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Search, Users, Video, AlertTriangle, Monitor, X, Filter, Package, User, BookOpen, FileText, Info } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Search, Users, Video, AlertTriangle, Monitor, X, Filter, Package, User, BookOpen, FileText, Info, BellRing, CheckCircle2 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import api from '../services/api';
 import { getStorage, useDataSync } from '../utils/syncHelper';
 
 interface ScheduleEvent {
@@ -19,64 +21,63 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
   const [viewMode, setViewMode] = useState<'Tuần' | 'Ngày' | 'Timeline'>('Tuần');
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 8, 30));
   const [filterType, setFilterType] = useState<'Tất cả' | 'Lịch giảng dạy' | 'Lịch họp / Hội thảo'>('Tất cả');
-  
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
-
-  useDataSync('room_bookings', () => {
-    loadSchedule();
-  });
 
   useEffect(() => {
     loadSchedule();
   }, [userProfile]);
 
-  const loadSchedule = () => {
-    // 1. Mock base schedule
-    let baseEvents: ScheduleEvent[] = [
-      { id: 'EV_01', title: 'Lập trình Web (Lớp CNTT K18)', type: 'Dạy', room: 'Phòng A102', dayOfWeek: 1, timeSlot: 'Ca 1', timeString: '07:00 - 09:15', dateStr: '30/09/2026', attendees: 60 },
-      { id: 'EV_02', title: 'Họp Bộ môn Phần mềm', type: 'Họp', room: 'Phòng Hội thảo 2', dayOfWeek: 2, timeSlot: 'Ca 2', timeString: '09:30 - 11:00', dateStr: '01/10/2026', attendees: 15 },
-      { id: 'EV_03', title: 'Cơ sở dữ liệu (Lớp HTTT K18)', type: 'Dạy', room: 'Phòng B204', dayOfWeek: 3, timeSlot: 'Ca 3', timeString: '13:30 - 15:45', dateStr: '02/10/2026', attendees: 55 },
-      { id: 'EV_04', title: 'Bảo vệ Đồ án tốt nghiệp đợt 1', type: 'Họp', room: 'Phòng A101', dayOfWeek: 4, timeSlot: 'Khác', timeString: '07:00 - 11:30', dateStr: '03/10/2026', attendees: 40 },
-      { id: 'EV_05', title: 'Sinh hoạt lớp CNTT K18', type: 'Sinh hoạt', room: 'Phòng C102', dayOfWeek: 5, timeSlot: 'Khác', timeString: '14:00 - 16:30', dateStr: '04/10/2026', attendees: 60 },
-    ];
+  const loadSchedule = async () => {
+    try {
+      const response = await api.get('/meetings');
+      const allMeetings = response.data || [];
+      const approvedReqs = allMeetings.filter((m: any) => 
+        ['CONFIRMED', 'SCHEDULED', 'APPROVED'].includes(m.status) &&
+        (m.organizer_id === userProfile?.id || m.organizer?.email === userProfile?.email)
+      );
 
-    // 2. Read from room_bookings
-    const parsedReqs = getStorage<any[]>('room_bookings', []);
-    if (parsedReqs && parsedReqs.length > 0) {
-      try {
-        const approvedReqs = parsedReqs.filter((r: any) => 
-          (r.status === 'Đã duyệt' || r.status === 'Chờ duyệt') && 
-          r.lecturerEmail === userProfile?.email
-        );
+      const baseEvents: ScheduleEvent[] = [];
+      approvedReqs.forEach((m: any) => {
+        let mappedType: any = 'Họp';
+        if (m.meeting_type === 'Giảng dạy bổ sung') mappedType = 'Dạy';
+        if (m.meeting_type === 'Sinh hoạt lớp/CLB') mappedType = 'Sinh hoạt';
+
+        const startDate = new Date(m.start_time);
+        const endDate = new Date(m.end_time);
+
+        let dow = startDate.getDay();
+        if (dow === 0) dow = 7;
+
+        let mappedShift = 'Ca 1';
+        const h = startDate.getHours();
+        if (h >= 10 && h < 13) mappedShift = 'Ca 2';
+        else if (h >= 13 && h < 15) mappedShift = 'Ca 3';
+        else if (h >= 15 && h < 17) mappedShift = 'Ca 4';
+        else if (h >= 17) mappedShift = 'Ca 5';
+
+        const timeString = `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')} - ${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
         
-        approvedReqs.forEach((r: any) => {
-          let mappedType: any = 'Họp';
-          if (r.type === 'Giảng dạy bổ sung') mappedType = 'Dạy';
-          if (r.type === 'Sinh hoạt lớp/CLB') mappedType = 'Sinh hoạt';
+        // ensure correct date string "DD/MM/YYYY"
+        const yyyy = startDate.getFullYear();
+        const mm = (startDate.getMonth() + 1).toString().padStart(2, '0');
+        const dd = startDate.getDate().toString().padStart(2, '0');
 
-          // Calculate correct day of week from date (YYYY-MM-DD)
-          // d.getDay() returns 0 for Sunday, 1 for Monday.
-          // The grid uses 1 for Monday, ..., 7 for Sunday.
-          const dateObj = new Date(r.date);
-          let dow = dateObj.getDay();
-          if (dow === 0) dow = 7;
-
-          baseEvents.push({
-            id: r.id,
-            title: r.purpose || r.title || 'Sự kiện',
-            type: mappedType,
-            room: r.roomName,
-            dayOfWeek: dow,
-            timeSlot: r.shift as any || 'Khác',
-            timeString: r.timeString || r.timeSlot || '',
-            dateStr: r.date.split('-').reverse().join('/'),
-            attendees: r.attendees
-          });
+        baseEvents.push({
+          id: m.meeting_id.toString(),
+          title: m.title || 'Sự kiện',
+          type: mappedType,
+          room: m.room?.room_name || 'Phòng ' + m.room_id,
+          dayOfWeek: dow,
+          timeSlot: mappedShift as any,
+          timeString: timeString,
+          dateStr: `${dd}/${mm}/${yyyy}`,
+          attendees: m.participants?.length || 0
         });
-      } catch (e) {}
+      });
+      setEvents(baseEvents);
+    } catch (e) {
+      console.error("Failed to fetch schedule from API", e);
     }
-
-    setEvents(baseEvents);
   };
 
   const getEventStyle = (type: string) => {
@@ -85,12 +86,13 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
     return { borderL: '#0ea5e9', badgeBg: '#f0f9ff', badgeColor: '#0369a1' }; // sky-500, sky-50, sky-700
   };
 
-  const timeSlots = ['Ca 1', 'Ca 2', 'Ca 3', 'Ca 4'];
+  const timeSlots = ['Ca 1', 'Ca 2', 'Ca 3', 'Ca 4', 'Ca 5'];
   const slotLabels = {
-    'Ca 1': 'Ca 1 (07:00 - 09:15)',
-    'Ca 2': 'Ca 2 (09:30 - 11:45)',
-    'Ca 3': 'Ca 3 (13:00 - 15:15)',
-    'Ca 4': 'Ca 4 (15:30 - 17:45)'
+    'Ca 1': 'Ca 1 (08:00 - 10:00)',
+    'Ca 2': 'Ca 2 (10:00 - 12:00)',
+    'Ca 3': 'Ca 3 (13:00 - 15:00)',
+    'Ca 4': 'Ca 4 (15:00 - 17:00)',
+    'Ca 5': 'Ca 5 (17:00 - 19:00)'
   };
   const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'];
   
@@ -108,13 +110,17 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
   };
   
+  const getFormattedFullDate = (index: number) => {
+    const d = new Date(startOfWeekDate);
+    d.setDate(d.getDate() + index);
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+  };
+
   const isToday = (index: number) => {
     const d = new Date(startOfWeekDate);
     d.setDate(d.getDate() + index);
-    const today = new Date(); // Or hardcoded demo today
-    // Hardcode demo today for visual stability:
-    const demoToday = new Date(2026, 8, 30);
-    return d.getDate() === demoToday.getDate() && d.getMonth() === demoToday.getMonth() && d.getFullYear() === demoToday.getFullYear();
+    const today = new Date();
+    return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
   };
 
   const handlePrev = () => {
@@ -131,7 +137,7 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
     setCurrentDate(newDate);
   };
 
-  const handleToday = () => setCurrentDate(new Date(2026, 8, 30));
+  const handleToday = () => setCurrentDate(new Date());
 
   const renderDateRange = () => {
     if (viewMode === 'Tuần') {
@@ -250,7 +256,8 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
               </div>
 
               {days.map((day, dIdx) => {
-                const dayEvents = filteredEvents.filter(e => e.dayOfWeek === dIdx + 1 && e.timeSlot === slot);
+                const colDateStr = getFormattedFullDate(dIdx);
+                const dayEvents = filteredEvents.filter(e => e.dayOfWeek === dIdx + 1 && e.timeSlot === slot && e.dateStr === colDateStr);
                 return (
                   <div key={day} className={`p-2 flex flex-col gap-2 relative ${dIdx < 6 ? 'border-r border-slate-200' : ''} ${isToday(dIdx) ? 'bg-slate-50/50' : 'bg-transparent'}`}>
                     {dayEvents.map(ev => {
@@ -281,42 +288,7 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
             </div>
           ))}
 
-          {/* "Khác" row for out-of-bounds times */}
-          <div style={{ display: 'grid', gridTemplateColumns: '100px repeat(7, 1fr)', borderBottom: '1px solid #e2e8f0', minHeight: '140px' }}>
-            <div style={{ padding: '16px 8px', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', backgroundColor: '#f8fafc' }}>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569' }}>Lịch Khác</span>
-              <span style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>Ngoài giờ hành chính</span>
-            </div>
-            {days.map((day, dIdx) => {
-              const dayEvents = filteredEvents.filter(e => e.dayOfWeek === dIdx + 1 && e.timeSlot === 'Khác');
-              return (
-                <div key={day} className={`p-2 flex flex-col gap-2 relative ${dIdx < 6 ? 'border-r border-slate-200' : ''} ${isToday(dIdx) ? 'bg-slate-50/50' : 'bg-transparent'}`}>
-                  {dayEvents.map(ev => {
-                    const style = getEventStyle(ev.type);
-                    return (
-                      <div 
-                        key={ev.id}
-                        onClick={() => setSelectedEvent(ev)}
-                        className="bg-white rounded-lg p-3 cursor-pointer flex flex-col gap-1.5 shadow-sm hover:shadow-md transition-all border border-slate-200/80 hover:border-slate-300"
-                        style={{ borderLeft: `4px solid ${style.borderL}` }}
-                      >
-                        <div className="flex justify-between items-start mb-1">
-                          <span style={{ backgroundColor: style.badgeBg, color: style.badgeColor }} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md">
-                            {ev.type}
-                          </span>
-                        </div>
-                        <div className="font-semibold text-slate-900 text-sm mb-1 line-clamp-2 leading-snug">{ev.title}</div>
-                        <div className="text-xs text-slate-500 flex items-center font-medium">
-                          <Clock className="w-3.5 h-3.5 text-slate-400 inline mr-1 shrink-0" />
-                          {ev.timeString}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              );
-            })}
-          </div>
+
 
         </div>
       </div>
@@ -382,80 +354,146 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
 
       {/* Event Detail Modal */}
       {selectedEvent && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => setSelectedEvent(null)}>
+          <div style={{ backgroundColor: 'white', borderRadius: '24px', width: '100%', maxWidth: '850px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
             
-            <div style={{ padding: '24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', backgroundColor: '#f8fafc' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
               <div>
                 <span style={{ fontSize: '12px', fontWeight: 'bold', backgroundColor: getEventStyle(selectedEvent.type).badgeBg, color: getEventStyle(selectedEvent.type).badgeColor, padding: '4px 8px', borderRadius: '6px', marginBottom: '8px', display: 'inline-block' }}>
                   {selectedEvent.type}
                 </span>
-                <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a', margin: '0 0 8px 0', lineHeight: 1.4 }}>{selectedEvent.title}</h3>
+                <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a', margin: '0 0 4px 0', lineHeight: 1.4 }}>{selectedEvent.title}</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: '#64748b', fontSize: '14px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={16}/> {selectedEvent.dateStr}</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={16}/> {selectedEvent.timeString}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={15}/> {selectedEvent.dateStr}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={15}/> {selectedEvent.timeString}</span>
                 </div>
               </div>
-              <button onClick={() => setSelectedEvent(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '8px', borderRadius: '50%' }} className="hover:bg-slate-200">
-                <X size={20} />
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={() => {
+                    const setupTimer = () => {
+                      const timeStr = selectedEvent.timeString.split(' - ')[0]; // "08:00"
+                      const [hh, mm] = timeStr.split(':');
+                      const [day, month, year] = selectedEvent.dateStr.split('/');
+                      const meetingTime = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hh), parseInt(mm));
+                      const notifyTime = new Date(meetingTime.getTime() - 10 * 60000);
+                      const diff = notifyTime.getTime() - new Date().getTime();
+                      
+                      const fireNotification = () => {
+                        if (Notification.permission === 'granted') {
+                          new Notification('Sắp đến giờ họp!', { body: `Cuộc họp "${selectedEvent.title}" tại ${selectedEvent.room} sắp bắt đầu.` });
+                        }
+                        alert(`[THÔNG BÁO] Sắp đến giờ họp "${selectedEvent.title}" tại ${selectedEvent.room}!`);
+                      };
+
+                      if (diff > 0) {
+                        setTimeout(fireNotification, diff);
+                        alert(`Đã lên lịch thông báo thành công. Bạn sẽ nhận được thông báo lúc ${notifyTime.toLocaleTimeString()}`);
+                      } else {
+                        fireNotification();
+                      }
+                    };
+
+                    if ('Notification' in window) {
+                      if (Notification.permission === 'granted') setupTimer();
+                      else {
+                        Notification.requestPermission().then(perm => {
+                          if (perm === 'granted') setupTimer();
+                          else alert('Bạn chưa cấp quyền thông báo cho trình duyệt.');
+                        });
+                      }
+                    } else {
+                      setupTimer(); // fallback to alert only
+                    }
+                  }}
+                  style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}
+                >
+                  <BellRing size={16} /> Bật thông báo
+                </button>
+                <button onClick={() => setSelectedEvent(null)} style={{ background: 'white', border: '1px solid #e2e8f0', color: '#64748b', cursor: 'pointer', padding: '8px', borderRadius: '8px' }} className="hover:bg-slate-50">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', backgroundColor: '#eff6ff', padding: '16px', borderRadius: '16px', border: '1px solid #bfdbfe' }}>
-                <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: 'white', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <MapPin size={24} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px', padding: '24px' }}>
+              {/* CỘT TRÁI */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', backgroundColor: '#eff6ff', padding: '16px', borderRadius: '16px', border: '1px solid #bfdbfe' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', backgroundColor: 'white', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <MapPin size={24} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '13px', color: '#3b82f6', fontWeight: '600', marginBottom: '2px' }}>ĐỊA ĐIỂM SỬ DỤNG</div>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e3a8a' }}>{selectedEvent.room}</div>
+                  </div>
                 </div>
+
                 <div>
-                  <div style={{ fontSize: '13px', color: '#3b82f6', fontWeight: '600', marginBottom: '2px' }}>ĐỊA ĐIỂM SỬ DỤNG</div>
-                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e3a8a' }}>{selectedEvent.room}</div>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Monitor size={18} color="#64748b"/> Tiện ích sẵn có tại phòng
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {['Máy chiếu', 'Bảng thông minh', 'Điều hòa', 'Wifi 6', 'Loa & Mic'].map(fac => (
+                      <span key={fac} style={{ backgroundColor: '#f1f5f9', color: '#475569', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: '500' }}>
+                        {fac}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 'auto' }}>
+                  <button 
+                    onClick={() => {
+                      setSelectedEvent(null);
+                      navigateToTab('report-issue');
+                    }}
+                    style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                    className="hover:bg-red-50 transition-colors"
+                  >
+                    <AlertTriangle size={18} /> Báo sự cố phòng này
+                  </button>
                 </div>
               </div>
 
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Monitor size={18} color="#64748b"/> Tiện ích sẵn có tại phòng
+              {/* CỘT PHẢI */}
+              <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ textAlign: 'center', padding: '24px', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ marginBottom: '16px', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <MapPin size={18} color="#3b82f6" /> Quét mã để Điểm danh
+                  </div>
+                  <div style={{ background: 'white', padding: '16px', borderRadius: '12px', display: 'inline-block', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                    <QRCodeSVG value={`https://ictu.edu.vn/checkin/${selectedEvent.id}`} size={160} />
+                  </div>
+                  <div style={{ marginTop: '12px', fontSize: '13px', color: '#64748b' }}>
+                    Mã check-in: <strong>{selectedEvent.id.toString().padStart(6, '0').slice(-6)}</strong>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {['Máy chiếu', 'Bảng thông minh', 'Điều hòa', 'Wifi 6', 'Loa & Mic'].map(fac => (
-                    <span key={fac} style={{ backgroundColor: '#f1f5f9', color: '#475569', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: '500' }}>
-                      {fac}
-                    </span>
-                  ))}
+
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '700', color: '#0f172a', marginBottom: '12px' }}>
+                    <Users size={18} color="#64748b"/> Người tham dự ({selectedEvent.attendees || 0})
+                  </div>
+                  {(!selectedEvent.attendees || selectedEvent.attendees === 0) ? (
+                    <div style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic', textAlign: 'center', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '12px' }}>
+                      Chưa có thông tin người tham dự
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto' }}>
+                      {Array.from({ length: Math.min(selectedEvent.attendees, 10) }).map((_, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: '#64748b' }}>K</div>
+                          <div style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Khách mời {i + 1}</div>
+                        </div>
+                      ))}
+                      {selectedEvent.attendees > 10 && (
+                        <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', padding: '4px' }}>
+                          + {selectedEvent.attendees - 10} người khác
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-
-              {selectedEvent.attendees && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#475569' }}>
-                  <Users size={16} /> Số lượng tham dự: <strong>{selectedEvent.attendees} người</strong>
-                </div>
-              )}
-
-              <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '8px 0' }}></div>
-
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <button 
-                  onClick={() => {
-                    setSelectedEvent(null);
-                    navigateToTab('request-equipment');
-                  }}
-                  style={{ width: '100%', padding: '14px', borderRadius: '12px', border: 'none', backgroundColor: '#2563eb', color: 'white', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)' }}
-                  className="hover:bg-blue-700 transition-colors"
-                >
-                  <Package size={18} /> Đăng ký mượn thêm thiết bị
-                </button>
-                <button 
-                  onClick={() => {
-                    setSelectedEvent(null);
-                    navigateToTab('report-issue');
-                  }}
-                  style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                  className="hover:bg-red-100 transition-colors"
-                >
-                  <AlertTriangle size={18} /> Báo sự cố phòng này
-                </button>
               </div>
 
             </div>

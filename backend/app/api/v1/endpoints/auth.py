@@ -5,7 +5,8 @@ from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.models.user import User
 from app.schemas.auth import LoginRequest, Token
-from app.schemas.user import UserOut, UserChangePassword
+from app.schemas.user import UserOut, UserChangePassword, UserRegister
+from app.models.role import Role
 from app.api.deps import get_current_active_user
 
 router = APIRouter()
@@ -97,3 +98,47 @@ def change_password(
     current_user.password_hash = get_password_hash(data.new_password)
     db.commit()
     return {"message": "Đổi mật khẩu thành công"}
+
+from app.schemas.user import UserRegister
+from app.models.role import Role
+
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED, summary="Đăng ký tài khoản")
+def register_user(data: UserRegister, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == data.email).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email này đã được sử dụng!"
+        )
+    
+    # Map role_name string to role_id
+    if data.role_name == "admin":
+        role_name_mapped = "ADMIN"
+    elif data.role_name == "lecturer":
+        role_name_mapped = "LECTURER"
+    else:
+        role_name_mapped = "PARTICIPANT"
+        
+    role = db.query(Role).filter(Role.role_name == role_name_mapped).first()
+    if not role:
+        # Fallback to id=1, 2, or 3
+        if data.role_name == "admin":
+            role_id = 1
+        elif data.role_name == "lecturer":
+            role_id = 2
+        else:
+            role_id = 3
+    else:
+        role_id = role.role_id
+
+    new_user = User(
+        email=data.email,
+        full_name=data.full_name,
+        password_hash=get_password_hash(data.password),
+        role_id=role_id,
+        status="ACTIVE"
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user

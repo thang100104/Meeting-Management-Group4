@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, UserCheck, UserX, UserPlus, 
   Search, Lock, Unlock, Edit2, Trash2, 
   MoreVertical, Shield, GraduationCap, X, RefreshCw 
 } from 'lucide-react';
+import api from '../services/api';
 
 interface User {
   id: string;
@@ -17,78 +18,7 @@ interface User {
   avatar?: string;
 }
 
-const MOCK_USERS: User[] = [
-  {
-    id: '1',
-    name: 'PGS.TS Trần Văn A',
-    email: 'tranvana@university.edu.vn',
-    role: 'Giảng viên',
-    identifier: 'GV-10234',
-    faculty: 'Khoa CNTT',
-    department: 'Bộ môn Mạng Máy Tính',
-    status: 'active'
-  },
-  {
-    id: '2',
-    name: 'Nguyễn Thị Bích',
-    email: 'bich.nt@student.edu.vn',
-    role: 'Sinh viên',
-    identifier: 'SV20260123',
-    faculty: 'Khoa CNTT',
-    department: 'Lớp DPT14A',
-    status: 'active'
-  },
-  {
-    id: '3',
-    name: 'ThS. Lê Hoàng C',
-    email: 'hoangc@university.edu.vn',
-    role: 'Cán bộ phòng',
-    identifier: 'CB-9932',
-    faculty: 'Phòng Hành Chính',
-    department: 'Tổ Quản lý Thiết bị',
-    status: 'active'
-  },
-  {
-    id: '4',
-    name: 'Trần Đại D',
-    email: 'daid.tran@student.edu.vn',
-    role: 'Sinh viên',
-    identifier: 'SV20240999',
-    faculty: 'Khoa Kinh tế',
-    department: 'Lớp KTE12C',
-    status: 'locked'
-  },
-  {
-    id: '5',
-    name: 'TS. Phạm Quang E',
-    email: 'quange@university.edu.vn',
-    role: 'Giảng viên',
-    identifier: 'GV-20455',
-    faculty: 'Khoa Điện - Điện tử',
-    department: 'Bộ môn Tự động hóa',
-    status: 'active'
-  },
-  {
-    id: '6',
-    name: 'Vũ Thị F',
-    email: 'thif.vu@student.edu.vn',
-    role: 'Sinh viên',
-    identifier: 'SV20250777',
-    faculty: 'Khoa Ngoại ngữ',
-    department: 'Lớp NNA13B',
-    status: 'active'
-  },
-  {
-    id: '7',
-    name: 'Hoàng Quốc G',
-    email: 'quocg@student.edu.vn',
-    role: 'Sinh viên',
-    identifier: 'SV20260888',
-    faculty: 'Khoa CNTT',
-    department: 'Lớp KTPM14',
-    status: 'locked'
-  }
-];
+const MOCK_USERS: User[] = [];
 
 const FACULTIES = [
   'Tất cả',
@@ -100,8 +30,33 @@ const FACULTIES = [
 ];
 
 export default function UserManagement() {
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  
+  const [users, setUsers] = useState<User[]>([]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await api.get('/users');
+      const apiUsers = res.data.map((u: any) => ({
+        id: u.user_id.toString(),
+        name: u.full_name,
+        email: u.email,
+        role: u.role?.role_name === 'ADMIN' ? 'Cán bộ phòng' : 
+               (u.role?.role_name === 'ORGANIZER' ? 'Giảng viên' : 'Sinh viên'),
+        identifier: u.employee_id || u.student_id || `ID-${u.user_id}`,
+        faculty: u.department?.department_name || 'Khác',
+        department: 'N/A',
+        status: u.status === 'ACTIVE' ? 'active' : 'locked',
+        avatar: u.avatar_url
+      }));
+      setUsers(apiUsers);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  };
+
   // Filters
   const [activeTab, setActiveTab] = useState<'Tất cả' | 'Giảng viên' | 'Sinh viên' | 'Cán bộ phòng'>('Tất cả');
   const [searchQuery, setSearchQuery] = useState('');
@@ -168,18 +123,27 @@ export default function UserManagement() {
     setIsModalOpen(false);
   };
 
-  const toggleUserStatus = (id: string) => {
-    setUsers(users.map(u => {
-      if (u.id === id) {
-        return { ...u, status: u.status === 'active' ? 'locked' : 'active' };
-      }
-      return u;
-    }));
+  const toggleUserStatus = async (id: string) => {
+    const user = users.find(u => u.id === id);
+    if (!user) return;
+    try {
+      await api.put(`/users/${id}`, { status: user.status === 'active' ? 'INACTIVE' : 'ACTIVE' });
+      fetchUsers();
+    } catch (error) {
+      console.error("Lỗi khi cập nhật trạng thái:", error);
+      alert("Không thể cập nhật trạng thái người dùng!");
+    }
   };
 
-  const handleDeleteUser = (id: string) => {
+  const handleDeleteUser = async (id: string) => {
     if (window.confirm("Bạn có chắc chắn muốn xóa người dùng này khỏi hệ thống? Dữ liệu sẽ không thể khôi phục.")) {
-      setUsers(users.filter(u => u.id !== id));
+      try {
+        await api.delete(`/users/${id}?hard_delete=true`);
+        fetchUsers();
+      } catch (error) {
+        console.error("Lỗi khi xóa người dùng:", error);
+        alert("Không thể xóa người dùng!");
+      }
     }
   };
 
@@ -327,9 +291,13 @@ export default function UserManagement() {
                   {/* Info */}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs shadow-sm">
-                        {getAvatarInitials(user.name)}
-                      </div>
+                      {user.avatar && (user.avatar.startsWith('http') || user.avatar.startsWith('data:image/')) ? (
+                        <img src={user.avatar} alt={user.name} className="h-10 w-10 rounded-full object-cover shadow-sm" />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs shadow-sm">
+                          {getAvatarInitials(user.name)}
+                        </div>
+                      )}
                       <div>
                         <div className="font-bold text-slate-800 text-[13px]">{user.name}</div>
                         <div className="text-[11px] text-slate-500">{user.email}</div>

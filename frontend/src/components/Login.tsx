@@ -71,68 +71,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       }
 
     } catch (error: any) {
-      console.error("Login API Error, attempting fallback mock data:", error);
-      
-      // MOCK FALLBACK DUAL-MODE
-      if (inputEmail === 'admin@ictu.edu.vn' && inputPassword === '123456') {
-        let mockAdmin = { id: 1, email: inputEmail, fullName: 'Admin System', role: 'ADMIN', avatar: '' };
-        
-        // Ưu tiên đọc dữ liệu cũ đã lưu (nếu có) để không bị mất sửa đổi Profile
-        const savedMock = localStorage.getItem(`mock_profile_${inputEmail}`);
-        if (savedMock) {
-          try { mockAdmin = { ...mockAdmin, ...JSON.parse(savedMock) }; } catch(e){}
-        }
-
-        const token = 'mock-token-admin';
-        localStorage.setItem('access_token', token);
-        localStorage.setItem('token', token);
-        sessionStorage.setItem('access_token', token);
-        sessionStorage.setItem('token', token);
-        
-        localStorage.setItem('user', JSON.stringify(mockAdmin));
-        localStorage.setItem('currentUser', JSON.stringify(mockAdmin));
-        sessionStorage.setItem('user', JSON.stringify(mockAdmin));
-        sessionStorage.setItem('currentUser', JSON.stringify(mockAdmin));
-        setStorage('meetinghub_user', mockAdmin);
-        
-        onLoginSuccess(token, mockAdmin);
-        updateUser(mockAdmin);
-        
-        navigate('/dashboard');
-        setLoading(false);
-        return;
-      }
-
-      if ((inputEmail === 'hoangphuong@ictu.edu.vn' || inputEmail.endsWith('@ictu.edu.vn')) && inputPassword === '123456') {
-        let mockLecturer = { id: 2, email: inputEmail, fullName: 'Giảng viên ICTU', role: 'LECTURER', avatar: '' };
-        
-        // Ưu tiên đọc dữ liệu cũ đã lưu
-        const savedMock = localStorage.getItem(`mock_profile_${inputEmail}`);
-        if (savedMock) {
-          try { mockLecturer = { ...mockLecturer, ...JSON.parse(savedMock) }; } catch(e){}
-        }
-
-        const token = 'mock-token-lecturer';
-        localStorage.setItem('access_token', token);
-        localStorage.setItem('token', token);
-        sessionStorage.setItem('access_token', token);
-        sessionStorage.setItem('token', token);
-        
-        localStorage.setItem('user', JSON.stringify(mockLecturer));
-        localStorage.setItem('currentUser', JSON.stringify(mockLecturer));
-        sessionStorage.setItem('user', JSON.stringify(mockLecturer));
-        sessionStorage.setItem('currentUser', JSON.stringify(mockLecturer));
-        setStorage('meetinghub_user', mockLecturer);
-        
-        onLoginSuccess(token, mockLecturer);
-        updateUser(mockLecturer);
-        
-        navigate('/lecturer');
-        setLoading(false);
-        return;
-      }
-
-      // Nếu không phải tài khoản mock thì báo lỗi như bình thường
+      console.error("Login API Error:", error);
       const detail = error.response?.data?.detail;
       const errorMsg = typeof detail === 'string' ? detail : 'Email hoặc mật khẩu không chính xác!';
       alert(`[Lỗi Backend]: ${errorMsg}`);
@@ -183,6 +122,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       const r = (finalUserData.role || '').toLowerCase();
       if (r === 'lecturer' || r.includes('giảng viên')) {
         navigate('/lecturer');
+      } else if (r === 'student' || r.includes('sinh viên') || r === 'participant') {
+        navigate('/student');
       } else {
         navigate('/dashboard'); // Admin dashboard
       }

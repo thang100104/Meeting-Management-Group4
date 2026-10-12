@@ -60,7 +60,7 @@ export default function LecturerMyRequests({ userProfile }: { userProfile: any }
             attendees: m.participants?.length || 0,
             notes: m.description || '',
             status: statusStr as any,
-            rejectReason: '',
+            rejectReason: m.reject_reason || '',
             createdAt: m.created_at || new Date().toISOString(),
           };
         });

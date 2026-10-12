@@ -1,31 +1,64 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getStorage, useDataSync } from '../utils/syncHelper';
 import { NotificationDropdown } from './NotificationDropdown';
 import {
   LayoutDashboard, Calendar, ClipboardList, Monitor, Package,
-  AlertTriangle, User, LogOut, Video, ChevronDown, Bell, Clock, Plus
+  AlertTriangle, User, LogOut, Video, ChevronDown, Bell, Clock, Plus, MessageSquare
 } from 'lucide-react';
 import LecturerRoomBooking from './LecturerRoomBooking';
 import LecturerMyRequests from './LecturerMyRequests';
-import LecturerEquipmentBooking from './LecturerEquipmentBooking';
-import LecturerBorrowedEquipment from './LecturerBorrowedEquipment';
 import LecturerSchedule from './LecturerSchedule';
 import LecturerReportIssue from './LecturerReportIssue';
+import StudentLecturerChat from './StudentLecturerChat';
 import ProfileView from './ProfileView';
+import { getNotificationsForRole, type SystemNotification } from '../utils/notificationService';
 
 export default function LecturerDashboard() {
   const navigate = useNavigate();
 
-  const [notifications, setNotifications] = useState<any[]>(() => getStorage<any[]>('system_notifications', []));
+  const [notifications, setNotifications] = useState<SystemNotification[]>(() => 
+    getNotificationsForRole('lecturer')
+  );
   const [showNotif, setShowNotif] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
 
-  useDataSync('system_notifications', () => {
-    setNotifications(getStorage<any[]>('system_notifications', []));
-  });
+  const refreshNotifs = () => {
+    setNotifications(getNotificationsForRole('lecturer'));
+  };
+
+  useEffect(() => {
+    refreshNotifs();
+    window.addEventListener('storage', refreshNotifs);
+    window.addEventListener('appDataSync', refreshNotifs);
+    window.addEventListener('system-notification-updated', refreshNotifs);
+    return () => {
+      window.removeEventListener('storage', refreshNotifs);
+      window.removeEventListener('appDataSync', refreshNotifs);
+      window.removeEventListener('system-notification-updated', refreshNotifs);
+    };
+  }, []);
+
   const [activeTab, setActiveTab] = useState('overview');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+
+  // Click outside listener
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotif(false);
+      }
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setShowUserDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const [userProfile, setUserProfile] = useState<any>(() => {
     const saved = sessionStorage.getItem('user') || sessionStorage.getItem('currentUser') || sessionStorage.getItem('meetinghub_user');
@@ -43,18 +76,21 @@ export default function LecturerDashboard() {
     };
   });
 
-  const updatePendingCount = () => {
+  const updatePendingCount = async () => {
     try {
-      const saved = localStorage.getItem('meetinghub_room_requests');
-      if (saved) {
-        const requests = JSON.parse(saved);
-        const count = requests.filter((r: any) => r.status === 'Chờ duyệt' || r.status === 'pending').length;
+      const { default: api } = await import('../services/api');
+      const response = await api.get('/meetings');
+      if (response.data) {
+        const count = response.data.filter((m: any) => 
+          (m.organizer_id === userProfile?.id || m.organizer?.email === userProfile?.email) && 
+          (m.status === 'PENDING')
+        ).length;
         setPendingRequestsCount(count);
       } else {
         setPendingRequestsCount(0);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error fetching pending count', e);
     }
   };
 
@@ -110,13 +146,6 @@ export default function LecturerDashboard() {
       ]
     },
     {
-      group: 'THIẾT BỊ GIẢNG DẠY',
-      items: [
-        { id: 'request-equipment', label: 'Đăng ký mượn thiết bị', icon: <Monitor size={20} /> },
-        { id: 'my-equipment', label: 'Thiết bị đang mượn', icon: <Package size={20} /> },
-      ]
-    },
-    {
       group: 'LỊCH TRÌNH',
       items: [
         { id: 'schedule', label: 'Lịch dạy & Lịch họp', icon: <Calendar size={20} /> },
@@ -125,7 +154,8 @@ export default function LecturerDashboard() {
     {
       group: 'HỖ TRỢ & CÁ NHÂN',
       items: [
-        { id: 'report-issue', label: 'Báo cáo sự cố', icon: <AlertTriangle size={20} /> },
+        { id: 'student-chat', label: 'Tin nhắn sinh viên', icon: <MessageSquare size={20} /> },
+        { id: 'report-issue', label: 'Hỗ trợ kỹ thuật & Báo cáo', icon: <AlertTriangle size={20} /> },
         { id: 'profile', label: 'Hồ sơ cá nhân', icon: <User size={20} /> },
       ]
     }
@@ -239,23 +269,30 @@ export default function LecturerDashboard() {
           transition: 'all 0.3s ease'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div style={{ position: 'relative' }}>
+            <div ref={notifRef} style={{ position: 'relative' }}>
               <button
-                onClick={() => { setShowNotif(!showNotif); setShowUserDropdown(false); }}
-                style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: activeTab === 'overview' ? '#f8fafc' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                type="button"
+                onClick={() => { setShowNotif(prev => !prev); setShowUserDropdown(false); }}
+                style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: activeTab === 'overview' ? '#f8fafc' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}
+                title="Thông báo"
               >
                 <Bell size={20} />
-                <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', backgroundColor: '#ef4444', color: 'white', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: '2px solid white' }}>{notifications.length}</span>
+                {notifications.filter(n => !n.isRead).length > 0 && (
+                  <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', backgroundColor: '#ef4444', color: 'white', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: '2px solid white' }}>
+                    {notifications.filter(n => !n.isRead).length}
+                  </span>
+                )}
               </button>
               {showNotif && (
-                <NotificationDropdown onClose={() => setShowNotif(false)} />
+                <NotificationDropdown onClose={() => setShowNotif(false)} role="lecturer" />
               )}
             </div>
             <div style={{ width: '1px', height: '24px', backgroundColor: activeTab === 'overview' ? 'rgba(255,255,255,0.1)' : '#e2e8f0' }}></div>
 
-            <div style={{ position: 'relative' }}>
+            <div ref={userDropdownRef} style={{ position: 'relative' }}>
               <button
-                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                type="button"
+                onClick={() => { setShowUserDropdown(prev => !prev); setShowNotif(false); }}
                 style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: '8px', transition: 'background-color 0.2s' }}
                 className={activeTab === 'overview' ? "hover:bg-slate-800" : "hover:bg-slate-50"}
               >
@@ -389,12 +426,6 @@ export default function LecturerDashboard() {
                       >
                         ĐĂNG KÝ PHÒNG HỌP <Calendar size={18} />
                       </button>
-                      <button
-                        onClick={() => setActiveTab('request-equipment')}
-                        className="bg-transparent text-[#00b493] border-2 border-[#00b493] px-8 py-3.5 rounded-full text-xs sm:text-sm font-extrabold tracking-wider uppercase transition-all duration-300 shadow-md hover:bg-[#00b493]/10 hover:-translate-y-1 hover:shadow-[0_10px_20px_rgba(0,180,147,0.3)] flex items-center gap-2"
-                      >
-                        MƯỢN THIẾT BỊ <Monitor size={18} />
-                      </button>
                     </div>
                   </div>
 
@@ -448,12 +479,10 @@ export default function LecturerDashboard() {
             <LecturerRoomBooking userProfile={userProfile} />
           ) : activeTab === 'my-room-requests' ? (
             <LecturerMyRequests userProfile={userProfile} />
-          ) : activeTab === 'request-equipment' ? (
-            <LecturerEquipmentBooking userProfile={userProfile} />
-          ) : activeTab === 'my-equipment' ? (
-            <LecturerBorrowedEquipment userProfile={userProfile} />
           ) : activeTab === 'schedule' ? (
             <LecturerSchedule userProfile={userProfile} navigateToTab={setActiveTab} />
+          ) : activeTab === 'student-chat' ? (
+            <StudentLecturerChat currentRole="lecturer" userProfile={userProfile} />
           ) : activeTab === 'report-issue' ? (
             <LecturerReportIssue userProfile={userProfile} />
           ) : activeTab === 'profile' ? (

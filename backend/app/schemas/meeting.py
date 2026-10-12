@@ -67,6 +67,7 @@ class MeetingOut(BaseModel):
     passcode: Optional[str]
     status: str
     qr_token: Optional[str]
+    reject_reason: Optional[str] = None
     created_at: datetime
     participants: List[MeetingParticipantOut] = []
     equipments: List[EquipmentOut] = []

@@ -7,6 +7,7 @@ from app.models.room import Room, RoomRestriction
 from app.models.role import Role
 from app.models.user import User
 from app.models.meeting import Meeting
+from app.models.equipment import Equipment
 from app.schemas.room import RoomCreate, RoomUpdate, RoomOut, RoomRestrictionCreate, RoomRestrictionOut
 from app.schemas.meeting import RoomAvailability
 from app.api.deps import get_current_active_user, require_roles
@@ -80,6 +81,15 @@ def create_room(
         equipments=data.equipments
     )
     db.add(room)
+    db.flush()
+    
+    if data.equipments:
+        eq_names = [e.strip() for e in data.equipments.split(",") if e.strip()]
+        for eq_name in eq_names:
+            eq = db.query(Equipment).filter(Equipment.equipment_name == eq_name, Equipment.room_id == None).first()
+            if eq:
+                eq.room_id = room.room_id
+
     db.commit()
     db.refresh(room)
     return room
@@ -127,6 +137,19 @@ def update_room(
         room.image_url = data.image_url
     if data.equipments is not None:
         room.equipments = data.equipments
+        
+        # Clear old equipments assigned to this room
+        old_eqs = db.query(Equipment).filter(Equipment.room_id == room.room_id).all()
+        for old_eq in old_eqs:
+            old_eq.room_id = None
+            
+        # Assign new equipments
+        if data.equipments:
+            eq_names = [e.strip() for e in data.equipments.split(",") if e.strip()]
+            for eq_name in eq_names:
+                eq = db.query(Equipment).filter(Equipment.equipment_name == eq_name).first()
+                if eq:
+                    eq.room_id = room.room_id
 
     db.commit()
     db.refresh(room)

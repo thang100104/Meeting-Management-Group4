@@ -275,49 +275,12 @@ const deleteRoomFromAPI = async (roomId: string): Promise<void> => {
 // Load Data Functions
 // ----------------------------------------------------------------------
 const getInitialBookings = (): BookingRequest[] => {
-  const saved = localStorage.getItem('admin_booking_requests');
+  const saved = localStorage.getItem('meetinghub_room_requests');
   if (saved) {
     try { return JSON.parse(saved); } catch (e) { return []; }
   }
   
-  const today = getTodayString();
-  const mockBookings: BookingRequest[] = [
-    {
-      id: 'BK001',
-      roomId: 'R02',
-      roomName: 'Phòng Hội trường B1',
-      requesterName: 'Nguyễn Văn A',
-      requesterRole: 'Giảng viên',
-      title: 'Hội thảo Công nghệ 2024',
-      date: today,
-      timeSlot: '13:00 - 15:00',
-      status: 'approved'
-    },
-    {
-      id: 'BK002',
-      roomId: 'R02',
-      roomName: 'Phòng Hội trường B1',
-      requesterName: 'Nguyễn Văn A',
-      requesterRole: 'Giảng viên',
-      title: 'Hội thảo Công nghệ 2024 (Tiếp)',
-      date: today,
-      timeSlot: '15:00 - 17:00',
-      status: 'approved'
-    },
-    {
-      id: 'BK003',
-      roomId: 'R05',
-      roomName: 'Phòng Đào tạo A4',
-      requesterName: 'Trần Thị B',
-      requesterRole: 'Sinh viên',
-      title: 'Sinh hoạt CLB IT',
-      date: today,
-      timeSlot: '08:00 - 10:00',
-      status: 'approved'
-    }
-  ];
-  localStorage.setItem('admin_booking_requests', JSON.stringify(mockBookings));
-  return mockBookings;
+  return [];
 };
 
 const getInitialDevices = () => {
@@ -419,12 +382,14 @@ const RoomsView: React.FC = () => {
   // Fetch rooms from backend API + set up polling for real-time sync
   useEffect(() => {
     const loadFromAPI = async () => {
-      const apiRooms = await fetchRoomsFromAPI();
-      if (apiRooms.length > 0) {
+      try {
+        const apiRooms = await fetchRoomsFromAPI();
+        // Cập nhật state bất kể mảng rỗng (khi xóa hết phòng) hay có dữ liệu
         setRooms(apiRooms);
         localStorage.setItem('admin_rooms', JSON.stringify(apiRooms));
+      } catch (err) {
+        console.error("Lỗi khi tải danh sách phòng từ API", err);
       }
-      // If API returns no data (empty server DB), keep localStorage/mock data
     };
 
     loadFromAPI();
@@ -434,7 +399,7 @@ const RoomsView: React.FC = () => {
 
     // Also listen for localStorage changes (same-origin cross-tab sync)
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'admin_booking_requests' && e.newValue) {
+      if (e.key === 'meetinghub_room_requests' && e.newValue) {
         setBookingRequests(JSON.parse(e.newValue));
       }
       if (e.key === 'admin_devices' && e.newValue) {

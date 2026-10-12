@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import './DashboardView.css';
+import { addNotification } from '../utils/notificationService';
 
 interface RoomBookingItem {
   id: number | string;
@@ -79,19 +80,21 @@ export default function ApprovalsView() {
   };
 
   // Helper to push to system notifications (visible in Header Bell dropdown)
-  const pushSystemNotification = (title: string, content: string) => {
+  const pushSystemNotification = (
+    title: string, 
+    content: string, 
+    targetRole: 'admin' | 'lecturer' | 'student' | 'all' = 'lecturer',
+    type: 'booking' | 'approval' | 'rejection' | 'schedule' | 'message' | 'system' = 'approval'
+  ) => {
     try {
-      const notifs = JSON.parse(localStorage.getItem('system_notifications') || '[]');
-      const newNotif = {
-        id: Date.now(),
+      addNotification({
         title,
         content,
-        createdAt: new Date().toISOString(),
-        isRead: false
-      };
-      localStorage.setItem('system_notifications', JSON.stringify([newNotif, ...notifs]));
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new Event('request-updated'));
+        targetRole,
+        senderRole: 'admin',
+        senderName: 'Quản trị viên',
+        type
+      });
     } catch (e) {
       console.error(e);
     }
@@ -150,7 +153,7 @@ export default function ApprovalsView() {
           time: timeSlotStr,
           date: startDate.toLocaleDateString('vi-VN'),
           reason: m.title || 'Cuộc họp',
-          avatar: m.organizer?.avatar || m.organizer?.avatarUrl || '',
+          avatar: m.organizer?.avatar_url || m.organizer?.avatar || m.organizer?.avatarUrl || '',
           status: statusStr,
           createdAt: m.created_at || new Date().toISOString(),
           meetingType: m.meeting_type,
@@ -165,43 +168,8 @@ export default function ApprovalsView() {
       console.warn("Lỗi tải meetings từ API, dùng fallback localStorage:", error);
     }
 
-    // Gộp thêm localStorage mock nếu có (loại bỏ ID số đã có từ DB)
-    let localList: RoomBookingItem[] = [];
-    const saved = localStorage.getItem('meetinghub_room_requests');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        const nonDbItems = parsed.filter((m: any) => typeof m.id === 'string' && !/^\d+$/.test(m.id));
-        localList = nonDbItems.map((m: any) => {
-          let statusStr: 'pending' | 'approved' | 'rejected' | 'cancelled' = 'pending';
-          if (m.status === 'Đã duyệt' || m.status === 'approved') statusStr = 'approved';
-          else if (m.status === 'Từ chối' || m.status === 'rejected') statusStr = 'rejected';
-          else if (m.status === 'Đã hủy' || m.status === 'cancelled') statusStr = 'cancelled';
-
-          return {
-            id: m.id,
-            name: m.lecturerName || m.userName || 'Giảng viên',
-            email: m.lecturerEmail || m.userEmail || '',
-            role: m.userRole || 'Giảng viên',
-            room: m.roomName || 'Phòng họp',
-            capacity: `${m.participants || m.attendees || 0} chỗ`,
-            time: m.timeSlot || '',
-            date: m.date ? new Date(m.date).toLocaleDateString('vi-VN') : '',
-            reason: m.purpose || m.title || 'Không có lý do',
-            avatar: m.userAvatar || m.requesterAvatar || '',
-            status: statusStr,
-            createdAt: m.createdAt || new Date().toISOString(),
-            notes: m.notes || m.description || '',
-            equipments: m.equipments || [],
-            participants: []
-          };
-        });
-      } catch (e) {}
-    }
-
-    const combined = [...apiList, ...localList];
-    combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    setRoomRequests(combined);
+    apiList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    setRoomRequests(apiList);
   };
 
   // 2. TẢI DANH SÁCH MƯỢN THIẾT BỊ TỪ API
@@ -260,7 +228,16 @@ export default function ApprovalsView() {
       updateLocalRoomStatus(item.id, 'Đã duyệt');
       pushSystemNotification(
         'Đã duyệt yêu cầu đặt phòng',
-        `Phòng '${item.room}' cho cuộc họp '${item.reason}' (${item.date} ${item.time}) đã được phê duyệt thành công.`
+        `Phòng '${item.room}' cho cuộc họp '${item.reason}' (${item.date} ${item.time}) đã được phê duyệt thành công.`,
+        'lecturer',
+        'approval'
+      );
+      // Gửi thông báo lịch họp cho Sinh viên
+      pushSystemNotification(
+        'Lịch họp mới được công bố',
+        `Cuộc họp '${item.reason}' tại Phòng '${item.room}' lúc ${item.time} ngày ${item.date}.`,
+        'student',
+        'schedule'
       );
       showToast(`✓ Đã phê duyệt cuộc họp '${item.reason}' thành công!`);
       loadRoomBookings();
@@ -508,573 +485,397 @@ export default function ApprovalsView() {
         </button>
       </div>
 
-      {/* 2. STATS KPI CARDS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-        {/* Card 1: Tổng chờ duyệt */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', padding: '20px', border: '1px solid #fde68a', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '16px', background: 'linear-gradient(135deg, #ffffff 60%, #fffbeb)' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '14px', backgroundColor: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Clock size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Tổng chờ duyệt</div>
-            <div style={{ fontSize: '28px', fontWeight: 800, color: '#b45309' }}>{totalPending}</div>
-          </div>
-        </div>
+      {/* 2. FILTERS & SEARCH - MODERN UI */}
+      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-4 mb-6">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+          
+          {/* Category & Status Tabs */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full lg:w-auto">
+            {/* Category Toggle (Room vs Equipment) */}
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => { setCategoryTab('rooms'); setActiveStatusTab('pending'); }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  categoryTab === 'rooms' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Building2 size={16} />
+                Phòng họp
+                {pendingRoomsCount > 0 && categoryTab !== 'rooms' && (
+                  <span className="bg-blue-100 text-blue-600 text-[10px] px-1.5 py-0.5 rounded-full">{pendingRoomsCount}</span>
+                )}
+              </button>
+              <button
+                onClick={() => { setCategoryTab('equipments'); setActiveStatusTab('pending'); }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  categoryTab === 'equipments' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Monitor size={16} />
+                Thiết bị
+                {pendingEqCount > 0 && categoryTab !== 'equipments' && (
+                  <span className="bg-purple-100 text-purple-600 text-[10px] px-1.5 py-0.5 rounded-full">{pendingEqCount}</span>
+                )}
+              </button>
+            </div>
 
-        {/* Card 2: Đặt phòng chờ duyệt */}
-        <div 
-          onClick={() => { setCategoryTab('rooms'); setActiveStatusTab('pending'); }}
-          style={{ backgroundColor: '#ffffff', borderRadius: '18px', padding: '20px', border: '1px solid #bfdbfe', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '16px', cursor: 'pointer', background: 'linear-gradient(135deg, #ffffff 60%, #eff6ff)' }}
-          className="hover:scale-[1.02] transition-transform"
-        >
-          <div style={{ width: '48px', height: '48px', borderRadius: '14px', backgroundColor: '#dbeafe', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Building2 size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Phòng họp chờ duyệt</div>
-            <div style={{ fontSize: '28px', fontWeight: 800, color: '#1d4ed8' }}>{pendingRoomsCount}</div>
-          </div>
-        </div>
+            <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
 
-        {/* Card 3: Thiết bị chờ duyệt */}
-        <div 
-          onClick={() => { setCategoryTab('equipments'); setActiveStatusTab('pending'); }}
-          style={{ backgroundColor: '#ffffff', borderRadius: '18px', padding: '20px', border: '1px solid #ddd6fe', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '16px', cursor: 'pointer', background: 'linear-gradient(135deg, #ffffff 60%, #f5f3ff)' }}
-          className="hover:scale-[1.02] transition-transform"
-        >
-          <div style={{ width: '48px', height: '48px', borderRadius: '14px', backgroundColor: '#ede9fe', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Monitor size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#5b21b6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Thiết bị chờ duyệt</div>
-            <div style={{ fontSize: '28px', fontWeight: 800, color: '#6d28d9' }}>{pendingEqCount}</div>
-          </div>
-        </div>
-
-        {/* Card 4: Đã xử lý */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', padding: '20px', border: '1px solid #bbf7d0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '16px', background: 'linear-gradient(135deg, #ffffff 60%, #f0fdf4)' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '14px', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckCircle2 size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Đã phê duyệt</div>
-            <div style={{ fontSize: '28px', fontWeight: 800, color: '#15803d' }}>{totalApproved}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. CATEGORY SWITCHER (PHÒNG HỌP VS THIẾT BỊ) */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-        <button
-          onClick={() => { setCategoryTab('rooms'); setActiveStatusTab('pending'); }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '12px 24px',
-            borderRadius: '16px',
-            fontWeight: 700,
-            fontSize: '15px',
-            border: categoryTab === 'rooms' ? '2px solid #2563eb' : '1px solid #e2e8f0',
-            backgroundColor: categoryTab === 'rooms' ? '#eff6ff' : '#ffffff',
-            color: categoryTab === 'rooms' ? '#1d4ed8' : '#64748b',
-            cursor: 'pointer',
-            boxShadow: categoryTab === 'rooms' ? '0 4px 12px rgba(37,99,235,0.15)' : 'none',
-            transition: 'all 0.2s'
-          }}
-        >
-          <Building2 size={20} />
-          Yêu cầu Đặt phòng họp
-          <span style={{
-            backgroundColor: categoryTab === 'rooms' ? '#2563eb' : '#94a3b8',
-            color: '#fff',
-            fontSize: '12px',
-            padding: '2px 8px',
-            borderRadius: '9999px',
-            fontWeight: 800
-          }}>
-            {pendingRoomsCount}
-          </span>
-        </button>
-
-        <button
-          onClick={() => { setCategoryTab('equipments'); setActiveStatusTab('pending'); }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '12px 24px',
-            borderRadius: '16px',
-            fontWeight: 700,
-            fontSize: '15px',
-            border: categoryTab === 'equipments' ? '2px solid #7c3aed' : '1px solid #e2e8f0',
-            backgroundColor: categoryTab === 'equipments' ? '#f5f3ff' : '#ffffff',
-            color: categoryTab === 'equipments' ? '#6d28d9' : '#64748b',
-            cursor: 'pointer',
-            boxShadow: categoryTab === 'equipments' ? '0 4px 12px rgba(124,58,237,0.15)' : 'none',
-            transition: 'all 0.2s'
-          }}
-        >
-          <Monitor size={20} />
-          Yêu cầu Mượn thiết bị di động
-          <span style={{
-            backgroundColor: categoryTab === 'equipments' ? '#7c3aed' : '#94a3b8',
-            color: '#fff',
-            fontSize: '12px',
-            padding: '2px 8px',
-            borderRadius: '9999px',
-            fontWeight: 800
-          }}>
-            {pendingEqCount}
-          </span>
-        </button>
-      </div>
-
-      {/* 4. SUB-FILTER TABS (THEO TRẠNG THÁI) & TÌM KIẾM */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => setActiveStatusTab('all')}
-            style={{
-              padding: '8px 18px',
-              borderRadius: '9999px',
-              fontWeight: 600,
-              fontSize: '13px',
-              border: 'none',
-              cursor: 'pointer',
-              backgroundColor: activeStatusTab === 'all' ? '#0f172a' : '#e2e8f0',
-              color: activeStatusTab === 'all' ? '#ffffff' : '#475569'
-            }}
-          >
-            Tất cả
-          </button>
-          <button
-            onClick={() => setActiveStatusTab('pending')}
-            style={{
-              padding: '8px 18px',
-              borderRadius: '9999px',
-              fontWeight: 600,
-              fontSize: '13px',
-              border: 'none',
-              cursor: 'pointer',
-              backgroundColor: activeStatusTab === 'pending' ? '#fef3c7' : '#f1f5f9',
-              color: activeStatusTab === 'pending' ? '#b45309' : '#64748b',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <Clock size={14} /> Chờ duyệt
-            <span style={{ backgroundColor: '#d97706', color: '#fff', fontSize: '11px', padding: '1px 6px', borderRadius: '9999px' }}>
-              {categoryTab === 'rooms' ? pendingRoomsCount : pendingEqCount}
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveStatusTab('approved')}
-            style={{
-              padding: '8px 18px',
-              borderRadius: '9999px',
-              fontWeight: 600,
-              fontSize: '13px',
-              border: 'none',
-              cursor: 'pointer',
-              backgroundColor: activeStatusTab === 'approved' ? '#dcfce7' : '#f1f5f9',
-              color: activeStatusTab === 'approved' ? '#15803d' : '#64748b'
-            }}
-          >
-            {categoryTab === 'rooms' ? 'Đã duyệt' : 'Đang mượn / Đã duyệt'}
-          </button>
-
-          {categoryTab === 'equipments' && (
-            <button
-              onClick={() => setActiveStatusTab('returned')}
-              style={{
-                padding: '8px 18px',
-                borderRadius: '9999px',
-                fontWeight: 600,
-                fontSize: '13px',
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: activeStatusTab === 'returned' ? '#e0f2fe' : '#f1f5f9',
-                color: activeStatusTab === 'returned' ? '#0369a1' : '#64748b'
-              }}
-            >
-              Đã trả lại
-            </button>
-          )}
-
-          <button
-            onClick={() => setActiveStatusTab('rejected')}
-            style={{
-              padding: '8px 18px',
-              borderRadius: '9999px',
-              fontWeight: 600,
-              fontSize: '13px',
-              border: 'none',
-              cursor: 'pointer',
-              backgroundColor: activeStatusTab === 'rejected' ? '#fee2e2' : '#f1f5f9',
-              color: activeStatusTab === 'rejected' ? '#b91c1c' : '#64748b'
-            }}
-          >
-            Đã từ chối
-          </button>
-        </div>
-
-        {/* Search & Role filter */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <div style={{ position: 'relative', width: '280px' }}>
-            <Search size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-            <input
-              type="text"
-              placeholder={categoryTab === 'rooms' ? "Tìm theo người đặt, phòng, lý do..." : "Tìm thiết bị, người mượn, phòng..."}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '9px 14px 9px 38px',
-                borderRadius: '12px',
-                border: '1px solid #cbd5e1',
-                fontSize: '13px',
-                outline: 'none',
-                backgroundColor: '#ffffff'
-              }}
-            />
+            {/* Status Filters */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setActiveStatusTab('all')}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                  activeStatusTab === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                Tất cả
+              </button>
+              <button
+                onClick={() => setActiveStatusTab('pending')}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                  activeStatusTab === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                <Clock size={14} /> Chờ duyệt
+                <span className="bg-amber-500 text-white text-[10px] px-1.5 rounded-full">
+                  {categoryTab === 'rooms' ? pendingRoomsCount : pendingEqCount}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveStatusTab('approved')}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                  activeStatusTab === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                {categoryTab === 'rooms' ? 'Đã duyệt' : 'Đang mượn'}
+              </button>
+              {categoryTab === 'equipments' && (
+                <button
+                  onClick={() => setActiveStatusTab('returned')}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                    activeStatusTab === 'returned' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  Đã trả lại
+                </button>
+              )}
+              <button
+                onClick={() => setActiveStatusTab('rejected')}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                  activeStatusTab === 'rejected' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                Từ chối
+              </button>
+            </div>
           </div>
 
-          <div style={{ position: 'relative', width: '180px' }}>
-            <Filter size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-            <select
-              value={roleFilter}
-              onChange={e => setRoleFilter(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '9px 14px 9px 38px',
-                borderRadius: '12px',
-                border: '1px solid #cbd5e1',
-                fontSize: '13px',
-                outline: 'none',
-                backgroundColor: '#ffffff',
-                cursor: 'pointer',
-                appearance: 'none'
-              }}
-            >
-              <option value="all">Tất cả vai trò</option>
-              <option value="Giảng viên">Giảng viên</option>
-              <option value="Quản trị viên">Quản trị viên</option>
-              <option value="Sinh viên">Sinh viên</option>
-            </select>
+          {/* Search & Role Filter */}
+          <div className="flex items-center gap-3 w-full lg:w-auto">
+            <div className="relative flex-1 lg:w-64">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder={categoryTab === 'rooms' ? "Tìm theo tên, phòng, lý do..." : "Tìm thiết bị, người mượn..."}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              />
+            </div>
+
+            <div className="relative shrink-0">
+              <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <select
+                value={roleFilter}
+                onChange={e => setRoleFilter(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none cursor-pointer transition-all"
+              >
+                <option value="all">Tất cả vai trò</option>
+                <option value="Giảng viên">Giảng viên</option>
+                <option value="Quản trị viên">Quản trị viên</option>
+                <option value="Sinh viên">Sinh viên</option>
+              </select>
+            </div>
           </div>
+          
         </div>
       </div>
 
-      {/* 5. NỘI DUNG BẢNG DUYỆT */}
+            {/* 5. NỘI DUNG BẢNG DUYỆT */}
       {categoryTab === 'rooms' ? (
         /* ── BẢNG YÊU CẦU ĐẶT PHÒNG HỌP ── */
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>NGƯỜI YÊU CẦU</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PHÒNG ĐĂNG KÝ</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>THỜI GIAN & NGÀY</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>MỤC ĐÍCH & THIẾT BỊ</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>TRẠNG THÁI</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>THAO TÁC</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRoomRequests.length > 0 ? (
-                filteredRoomRequests.map(req => (
-                  <tr key={req.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.2s' }} className="hover:bg-slate-50">
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {req.avatar && req.avatar.startsWith('http') ? (
-                          <img src={req.avatar} alt={req.name} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 'bold', color: 'white', flexShrink: 0 }}>
-                            {req.name.charAt(0).toUpperCase()}
+        <div className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-200/80">
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Người yêu cầu</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Phòng đăng ký</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Thời gian & Ngày</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Mục đích & Thiết bị</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredRoomRequests.length > 0 ? (
+                  filteredRoomRequests.map(req => (
+                    <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          {req.avatar && (req.avatar.startsWith('http') || req.avatar.startsWith('data:image/')) ? (
+                            <img src={req.avatar} alt={req.name} className="w-10 h-10 rounded-full object-cover shadow-sm border border-slate-100" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-cyan-500 flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-sm">
+                              {req.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-bold text-slate-800 text-sm">{req.name}</div>
+                            <div className="text-xs text-slate-500 mt-0.5">{req.email || req.role}</div>
+                            <span className="inline-block mt-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100/50">{req.role}</span>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-800 text-sm">{req.room}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">Sức chứa: {req.capacity}</div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-slate-800 text-sm">{req.time}</div>
+                        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><Calendar size={12}/> {req.date}</div>
+                      </td>
+
+                      <td className="px-5 py-4 max-w-[280px]">
+                        <div className="font-semibold text-slate-800 text-sm truncate" title={req.reason}>
+                          {req.reason}
+                        </div>
+                        {req.equipments && req.equipments.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {req.equipments.map((eq: any, idx: number) => (
+                              <span key={idx} className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200/60 flex items-center gap-1">
+                                ⚡ {eq.equipment_name || eq.name || 'Thiết bị'}
+                              </span>
+                            ))}
                           </div>
                         )}
-                        <div>
-                          <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>{req.name}</div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>{req.email || req.role}</div>
-                          <span style={{ fontSize: '11px', color: '#0284c7', backgroundColor: '#e0f2fe', padding: '1px 6px', borderRadius: '6px', fontWeight: 600 }}>{req.role}</span>
-                        </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '14px' }}>{req.room}</div>
-                      <div style={{ fontSize: '12px', color: '#94a3b8' }}>Sức chứa: {req.capacity}</div>
-                    </td>
-
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ fontWeight: 600, color: '#334155', fontSize: '14px' }}>{req.time}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>{req.date}</div>
-                    </td>
-
-                    <td style={{ padding: '16px 20px', maxWidth: '280px' }}>
-                      <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {req.reason}
-                      </div>
-                      {/* Hiển thị thiết bị kèm theo */}
-                      {req.equipments && req.equipments.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
-                          {req.equipments.map((eq: any, idx: number) => (
-                            <span key={idx} style={{ fontSize: '11px', backgroundColor: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                              ⚡ {eq.equipment_name || eq.name || 'Thiết bị'}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-
-                    <td style={{ padding: '16px 20px' }}>
-                      {req.status === 'pending' && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
-                          <Clock size={13} /> Chờ duyệt
-                        </span>
-                      )}
-                      {req.status === 'approved' && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
-                          <CheckCircle2 size={13} /> Đã duyệt
-                        </span>
-                      )}
-                      {req.status === 'rejected' && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
-                          <XCircle size={13} /> Đã từ chối
-                        </span>
-                      )}
-                      {req.status === 'cancelled' && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
-                          Đã hủy
-                        </span>
-                      )}
-                    </td>
-
-                    <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                      <td className="px-5 py-4">
                         {req.status === 'pending' && (
-                          <>
-                            <button
-                              onClick={() => handleApproveRoom(req)}
-                              className="btn-neon-approve"
-                              title="Phê duyệt cuộc họp này"
-                            >
-                              <Check size={18} strokeWidth={2.5} />
-                            </button>
-                            <button
-                              onClick={() => openRejectModal('room', req.id, req.reason)}
-                              className="btn-neon-reject"
-                              title="Từ chối yêu cầu"
-                            >
-                              <X size={18} strokeWidth={2.5} />
-                            </button>
-                          </>
+                          <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-200/60">
+                            <Clock size={14} /> Chờ duyệt
+                          </span>
                         )}
-                        <button
-                          onClick={() => setSelectedRoomReq(req)}
-                          className="btn-glass-view"
-                          title="Xem chi tiết"
-                        >
-                          <Eye size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteRoom(req.id)}
-                          title="Xóa đơn này"
-                          style={{
-                            background: '#fee2e2',
-                            border: 'none',
-                            borderRadius: '10px',
-                            width: '36px',
-                            height: '36px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: '#dc2626'
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {req.status === 'approved' && (
+                          <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-bold border border-emerald-200/60">
+                            <CheckCircle2 size={14} /> Đã duyệt
+                          </span>
+                        )}
+                        {req.status === 'rejected' && (
+                          <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 px-2.5 py-1 rounded-full text-xs font-bold border border-rose-200/60">
+                            <XCircle size={14} /> Từ chối
+                          </span>
+                        )}
+                        {req.status === 'cancelled' && (
+                          <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-xs font-bold border border-slate-200/60">
+                            Đã hủy
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end gap-2">
+                          {req.status === 'pending' && (
+                            <>
+                              <button
+                                onClick={() => handleApproveRoom(req)}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white hover:shadow-md hover:shadow-emerald-500/20 transition-all"
+                                title="Phê duyệt cuộc họp này"
+                              >
+                                <Check size={16} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                onClick={() => openRejectModal('room', req.id, req.reason)}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:shadow-md hover:shadow-rose-500/20 transition-all"
+                                title="Từ chối yêu cầu"
+                              >
+                                <X size={16} strokeWidth={2.5} />
+                              </button>
+                            </>
+                          )}
+                          <button
+                            onClick={() => setSelectedRoomReq(req)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-500 hover:text-white hover:shadow-md hover:shadow-blue-500/20 transition-all"
+                            title="Xem chi tiết"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteRoom(req.id)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 text-slate-400 hover:bg-rose-500 hover:text-white transition-all"
+                            title="Xóa đơn này"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                          <Search size={20} className="text-slate-400" />
+                        </div>
+                        <div className="text-sm font-semibold">Không tìm thấy yêu cầu đặt phòng nào phù hợp</div>
                       </div>
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                      <Search size={32} style={{ color: '#cbd5e1' }} />
-                      <div style={{ fontSize: '15px', fontWeight: 600 }}>Không tìm thấy yêu cầu đặt phòng nào phù hợp</div>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         /* ── BẢNG YÊU CẦU MƯỢN THIẾT BỊ ── */
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.03)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>NGƯỜI MƯỢN</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>THIẾT BỊ</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ĐỊA ĐIỂM SỬ DỤNG</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>THỜI GIAN MƯỢN</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>TRẠNG THÁI</th>
-                <th style={{ padding: '16px 20px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>THAO TÁC</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEquipmentRequests.length > 0 ? (
-                filteredEquipmentRequests.map(eq => (
-                  <tr key={eq.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.2s' }} className="hover:bg-slate-50">
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {eq.requesterAvatar && eq.requesterAvatar.startsWith('http') ? (
-                          <img src={eq.requesterAvatar} alt={eq.requesterName} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'linear-gradient(135deg, #8b5cf6, #ec4899)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 'bold', color: 'white', flexShrink: 0 }}>
-                            {eq.requesterName.charAt(0).toUpperCase()}
+        <div className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-200/80">
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Người mượn</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Thiết bị</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Địa điểm sử dụng</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Thời gian mượn</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Trạng thái</th>
+                  <th className="px-5 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredEquipmentRequests.length > 0 ? (
+                  filteredEquipmentRequests.map(eq => (
+                    <tr key={eq.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          {eq.requesterAvatar && (eq.requesterAvatar.startsWith('http') || eq.requesterAvatar.startsWith('data:image/')) ? (
+                            <img src={eq.requesterAvatar} alt={eq.requesterName} className="w-10 h-10 rounded-full object-cover shadow-sm border border-slate-100" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-sm">
+                              {eq.requesterName.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-bold text-slate-800 text-sm">{eq.requesterName}</div>
+                            <div className="text-xs text-slate-500 mt-0.5">{eq.requesterEmail || eq.requesterRole}</div>
+                            <span className="inline-block mt-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100/50">{eq.requesterRole}</span>
                           </div>
-                        )}
-                        <div>
-                          <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>{eq.requesterName}</div>
-                          <div style={{ fontSize: '12px', color: '#64748b' }}>{eq.requesterEmail || eq.requesterRole}</div>
-                          <span style={{ fontSize: '11px', color: '#7c3aed', backgroundColor: '#f5f3ff', padding: '1px 6px', borderRadius: '6px', fontWeight: 600 }}>{eq.requesterRole}</span>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '14px' }}>{eq.equipmentName}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>
-                        Loại: <span style={{ fontWeight: 600 }}>{eq.equipmentType}</span> | SL: <span style={{ fontWeight: 700, color: '#0f172a' }}>{eq.quantity}</span>
-                      </div>
-                      {eq.equipmentSerial && (
-                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>SN: {eq.equipmentSerial}</div>
-                      )}
-                    </td>
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Monitor size={14} className="text-slate-400"/> {eq.equipmentName}</div>
+                        <div className="text-xs text-slate-500 mt-0.5 ml-5">SL: {eq.quantity} | Mã: {eq.equipmentId}</div>
+                      </td>
 
-                    <td style={{ padding: '16px 20px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', backgroundColor: '#f1f5f9', padding: '4px 10px', borderRadius: '8px', display: 'inline-block' }}>
-                        📍 {eq.useLocation}
-                      </span>
-                    </td>
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-slate-800 text-sm">{eq.useLocation}</div>
+                      </td>
 
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ fontWeight: 600, color: '#334155', fontSize: '14px' }}>{eq.time}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>{eq.date}</div>
-                    </td>
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-slate-800 text-sm">{eq.time}</div>
+                        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><Calendar size={12}/> {eq.date}</div>
+                      </td>
 
-                    <td style={{ padding: '16px 20px' }}>
-                      {eq.status === 'pending' && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fef3c7', color: '#b45309', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
-                          <Clock size={13} /> Chờ duyệt
-                        </span>
-                      )}
-                      {eq.status === 'approved' && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
-                          <CheckCircle2 size={13} /> Đang mượn
-                        </span>
-                      )}
-                      {eq.status === 'returned' && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
-                          <CheckCheck size={13} /> Đã trả lại
-                        </span>
-                      )}
-                      {eq.status === 'rejected' && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fee2e2', color: '#b91c1c', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
-                          <XCircle size={13} /> Đã từ chối
-                        </span>
-                      )}
-                    </td>
-
-                    <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                      <td className="px-5 py-4">
                         {eq.status === 'pending' && (
-                          <>
-                            <button
-                              onClick={() => handleApproveEquipment(eq)}
-                              className="btn-neon-approve"
-                              title="Phê duyệt mượn thiết bị"
-                            >
-                              <Check size={18} strokeWidth={2.5} />
-                            </button>
-                            <button
-                              onClick={() => openRejectModal('equipment', eq.id, eq.equipmentName)}
-                              className="btn-neon-reject"
-                              title="Từ chối yêu cầu"
-                            >
-                              <X size={18} strokeWidth={2.5} />
-                            </button>
-                          </>
+                          <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-200/60">
+                            <Clock size={14} /> Chờ duyệt
+                          </span>
                         )}
                         {eq.status === 'approved' && (
-                          <button
-                            onClick={() => handleReturnEquipment(eq)}
-                            style={{
-                              background: '#e0f2fe',
-                              border: '1px solid #7dd3fc',
-                              color: '#0369a1',
-                              borderRadius: '10px',
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                            title="Xác nhận đã trả thiết bị vào kho"
-                          >
-                            <RotateCcw size={14} /> Thu hồi
-                          </button>
+                          <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-bold border border-emerald-200/60">
+                            <CheckCircle2 size={14} /> Đang mượn
+                          </span>
                         )}
-                        <button
-                          onClick={() => setSelectedEqReq(eq)}
-                          className="btn-glass-view"
-                          title="Xem chi tiết"
-                        >
-                          <Eye size={18} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteEquipment(eq.id)}
-                          title="Xóa đơn này"
-                          style={{
-                            background: '#fee2e2',
-                            border: 'none',
-                            borderRadius: '10px',
-                            width: '36px',
-                            height: '36px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: '#dc2626'
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {eq.status === 'rejected' && (
+                          <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 px-2.5 py-1 rounded-full text-xs font-bold border border-rose-200/60">
+                            <XCircle size={14} /> Từ chối
+                          </span>
+                        )}
+                        {eq.status === 'returned' && (
+                          <span className="inline-flex items-center gap-1.5 bg-sky-50 text-sky-700 px-2.5 py-1 rounded-full text-xs font-bold border border-sky-200/60">
+                            <CheckCheck size={14} /> Đã trả lại
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end gap-2">
+                          {eq.status === 'pending' && (
+                            <>
+                              <button
+                                onClick={() => handleApproveEquipment(eq)}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white hover:shadow-md hover:shadow-emerald-500/20 transition-all"
+                                title="Phê duyệt mượn"
+                              >
+                                <Check size={16} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                onClick={() => openRejectModal('equipment', eq.id, `Mượn ${eq.equipmentName}`)}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:shadow-md hover:shadow-rose-500/20 transition-all"
+                                title="Từ chối yêu cầu"
+                              >
+                                <X size={16} strokeWidth={2.5} />
+                              </button>
+                            </>
+                          )}
+                          {eq.status === 'approved' && (
+                            <button
+                              onClick={() => handleReturnEquipment(eq)}
+                              className="px-3 h-8 flex items-center justify-center gap-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-500 hover:text-white font-semibold text-xs transition-all"
+                              title="Xác nhận đã trả thiết bị vào kho"
+                            >
+                              <RotateCcw size={14} /> Thu hồi
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSelectedEqReq(eq)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-500 hover:text-white hover:shadow-md hover:shadow-blue-500/20 transition-all"
+                            title="Xem chi tiết"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteEquipment(eq.id)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 text-slate-400 hover:bg-rose-500 hover:text-white transition-all"
+                            title="Xóa đơn này"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                          <Monitor size={20} className="text-slate-400" />
+                        </div>
+                        <div className="text-sm font-semibold">Không tìm thấy yêu cầu mượn thiết bị nào phù hợp</div>
                       </div>
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                      <Monitor size={32} style={{ color: '#cbd5e1' }} />
-                      <div style={{ fontSize: '15px', fontWeight: 600 }}>Không tìm thấy yêu cầu mượn thiết bị nào</div>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1097,7 +898,7 @@ export default function ApprovalsView() {
             <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Người đặt */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '16px' }}>
-                {selectedRoomReq.avatar && selectedRoomReq.avatar.startsWith('http') ? (
+                {selectedRoomReq.avatar && (selectedRoomReq.avatar.startsWith('http') || selectedRoomReq.avatar.startsWith('data:image/')) ? (
                   <img src={selectedRoomReq.avatar} alt={selectedRoomReq.name} style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover' }} />
                 ) : (
                   <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', fontWeight: 'bold', color: 'white' }}>

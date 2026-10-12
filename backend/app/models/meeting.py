@@ -8,7 +8,7 @@ class Meeting(Base):
 
     meeting_id = Column(Integer, primary_key=True, index=True)
     organizer_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
-    room_id = Column(Integer, ForeignKey("rooms.room_id"), nullable=False)
+    room_id = Column(Integer, ForeignKey("rooms.room_id", ondelete="CASCADE"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     start_time = Column(DateTime, nullable=False, index=True)
@@ -18,6 +18,7 @@ class Meeting(Base):
     passcode = Column(String(50), nullable=True)
     status = Column(String(50), default="SCHEDULED") # SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
     qr_token = Column(String(100), unique=True, index=True, nullable=True)
+    reject_reason = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     organizer = relationship("User", foreign_keys=[organizer_id])

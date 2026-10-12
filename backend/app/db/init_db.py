@@ -53,85 +53,13 @@ def init_db(db: Session) -> None:
         db.commit()
         print(">> Đã khởi tạo tài khoản Admin: admin@ictu.edu.vn / 123456")
 
-    # 5. Tạo tài khoản Giảng viên (Organizer)
-    organizer_email = "giangvien@ictu.edu.vn"
-    organizer_user = db.query(User).filter(User.email == organizer_email).first()
-    if not organizer_user:
-        organizer_user = User(
-            email=organizer_email,
-            password_hash=get_password_hash("123456"),
-            full_name="ThS. Nguyễn Văn Hùng",
-            phone="0912345678",
-            role_id=roles_map["ORGANIZER"],
-            department_id=dept_map.get("Khoa Công nghệ thông tin"),
-            status="ACTIVE"
-        )
-        db.add(organizer_user)
-        db.commit()
-        print(">> Đã khởi tạo tài khoản Giảng viên: giangvien@ictu.edu.vn / 123456")
+    # Removed giangvien mock user
 
-    # 6. Tạo tài khoản Sinh viên (Participant)
-    participant_email = "sinhvien@ictu.edu.vn"
-    participant_user = db.query(User).filter(User.email == participant_email).first()
-    if not participant_user:
-        participant_user = User(
-            email=participant_email,
-            password_hash=get_password_hash("123456"),
-            full_name="Trần Minh Đức",
-            phone="0901234567",
-            role_id=roles_map["PARTICIPANT"],
-            department_id=dept_map.get("Khoa Công nghệ thông tin"),
-            status="ACTIVE"
-        )
-        db.add(participant_user)
-        db.commit()
-        print(">> Đã khởi tạo tài khoản Sinh viên: sinhvien@ictu.edu.vn / 123456")
+    # Removed sinhvien mock user
 
     # 6. Khởi tạo một số phòng họp mẫu (Rooms - US #7, #10)
-    sample_rooms = [
-        {
-            "name": "Hội trường lớn C1",
-            "capacity": 150,
-            "location": "Tầng 1, Tòa nhà C1",
-            "description": "Màn hình LED lớn, hệ thống âm thanh hội thảo, điều hòa trung tâm",
-            "status": "AVAILABLE"
-        },
-        {
-            "name": "Phòng họp Ban Giám hiệu (A1-201)",
-            "capacity": 30,
-            "location": "Tầng 2, Tòa nhà Điều hành A1",
-            "description": "Bàn tròn VIP, micro từng vị trí, màn hình TV 85 inch",
-            "status": "AVAILABLE"
-        },
-        {
-            "name": "Phòng hội thảo Khoa CNTT (C1-402)",
-            "capacity": 60,
-            "location": "Tầng 4, Tòa nhà C1",
-            "description": "Máy chiếu 4K, 2 micro không dây, wifi tốc độ cao",
-            "status": "AVAILABLE"
-        },
-        {
-            "name": "Phòng họp chuyên đề (C1-305)",
-            "capacity": 25,
-            "location": "Tầng 3, Tòa nhà C1",
-            "description": "Bảng thông minh Smartboard, bàn ghế di động linh hoạt",
-            "status": "AVAILABLE"
-        },
-        {
-            "name": "Phòng họp nhóm sinh viên (B-102)",
-            "capacity": 15,
-            "location": "Tầng 1, Tòa nhà B",
-            "description": "TV 65 inch, cổng kết nối HDMI/Type-C",
-            "status": "AVAILABLE"
-        },
-        {
-            "name": "Phòng đa năng C2 (Đang bảo trì)",
-            "capacity": 50,
-            "location": "Tầng 2, Tòa nhà C2",
-            "description": "Đang bảo trì hệ thống điều hòa và ánh sáng",
-            "status": "MAINTENANCE"
-        }
-    ]
+    # Tạm thời vô hiệu hóa việc tự tạo phòng mẫu để user có thể chủ động xóa và test
+    sample_rooms = []
 
     for r_data in sample_rooms:
         room = db.query(Room).filter(Room.room_name == r_data["name"]).first()
@@ -148,7 +76,6 @@ def init_db(db: Session) -> None:
             db.refresh(room)
 
             # Cấu hình giới hạn mẫu (US #21):
-            # Phòng Ban Giám hiệu (A1-201) chỉ dành cho Admin và Giảng viên, cấm PARTICIPANT (sinh viên) đặt
             if "Ban Giám hiệu" in room.room_name and "PARTICIPANT" in roles_map:
                 restriction = RoomRestriction(
                     room_id=room.room_id,
@@ -157,7 +84,7 @@ def init_db(db: Session) -> None:
                 )
                 db.add(restriction)
                 db.commit()
-    print(">> Đã khởi tạo danh sách phòng họp mẫu thành công!")
+    # print(">> Đã khởi tạo danh sách phòng họp mẫu thành công!")
 
     # 7. Khởi tạo danh mục thiết bị mẫu (Equipments - US #12, #13, #14)
     # Lấy ID các phòng để gán thiết bị cố định

@@ -157,12 +157,12 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
     // Load dynamic bookings from localStorage
     let dynamicBookings: any[] = [];
     try {
-      const storedBookings = localStorage.getItem('admin_booking_requests');
+      const storedBookings = localStorage.getItem('meetinghub_room_requests');
       if (storedBookings) {
         const parsedBookings = JSON.parse(storedBookings);
         if (Array.isArray(parsedBookings)) {
           dynamicBookings = parsedBookings
-            ?.filter((b: any) => b?.date === selectedDate && b?.status === 'approved')
+            ?.filter((b: any) => b?.date === selectedDate && b?.status === 'Đã duyệt')
             ?.map((b: any, idx: number) => {
               // Convert "08:00 - 10:00" to start/end times
               let start_time = `${selectedDate}T08:00:00`;
@@ -179,35 +179,25 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
               return {
                 meeting_id: b?.id || idx + 1,
                 room_id: b?.roomId || b?.room || b?.roomName,
-                title: b?.title || 'Cuộc họp',
+                title: b?.purpose || b?.title || 'Cuộc họp',
+                description: b?.description || b?.notes || 'Không có mô tả chi tiết',
                 start_time,
                 end_time,
                 status: b?.status?.toUpperCase() || 'APPROVED',
                 meeting_type: 'IN_PERSON',
-                organizer: { full_name: b?.requesterName || 'Người dùng', email: '' },
-                participants: []
+                organizer: { 
+                  full_name: b?.userName || b?.lecturerName || b?.requesterName || 'Người dùng', 
+                  email: b?.userEmail || b?.lecturerEmail || '' 
+                },
+                participants: b?.participants ? Array(b.participants).fill({ user: { full_name: 'Khách' } }) : [],
+                equipments: b?.equipments || (b?.equipmentIds ? b.equipmentIds.map((id: any) => ({ equipment_id: id, equipment_name: 'Thiết bị #' + id })) : [])
               };
             }) || [];
         }
       }
     } catch (e) { console.error("Error parsing admin_booking_requests", e); }
 
-    // Fallback
-    if (dynamicBookings.length === 0) {
-      dynamicBookings = [
-        {
-          meeting_id: 1,
-          room_id: dynamicRooms[0]?.room_id || 1,
-          title: 'Họp giao ban định kỳ (Mẫu)',
-          start_time: `${selectedDate}T08:00:00`,
-          end_time: `${selectedDate}T10:00:00`,
-          status: 'APPROVED',
-          meeting_type: 'IN_PERSON',
-          organizer: { full_name: 'Nguyễn Văn A', email: 'nva@ictu.edu.vn' },
-          participants: []
-        }
-      ];
-    }
+    // Removed hardcoded fallback
 
     setRooms(dynamicRooms);
     setBookings(dynamicBookings);
@@ -595,19 +585,19 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
   };
 
   return (
-    <div className="ledger-container">
-      <div className="ledger-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+    <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm flex flex-col h-full overflow-hidden">
+      <div className="p-5 border-b border-slate-200/80 flex justify-between items-start flex-wrap gap-4 bg-slate-50/50">
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#0f172a', margin: 0 }}>Lịch họp toàn trường</h1>
-          <p className="subtitle" style={{ color: '#64748b', marginTop: '4px', fontSize: '14px', margin: '4px 0 0 0' }}>Theo dõi và quản lý mốc thời gian sử dụng phòng họp toàn hệ thống</p>
+          <h1 className="text-xl font-bold text-slate-800 m-0">Lịch họp toàn trường</h1>
+          <p className="text-sm text-slate-500 mt-1 mb-0">Theo dõi và quản lý mốc thời gian sử dụng phòng họp toàn hệ thống</p>
         </div>
 
         {/* RIGHT CONTROLS */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="flex gap-3 items-center flex-wrap">
           <select
             value={meetingRoomFilter}
             onChange={(e) => setMeetingRoomFilter(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', fontSize: '14px', outline: 'none', cursor: 'pointer', color: '#334155', fontWeight: '500' }}
+            className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-sm outline-none cursor-pointer text-slate-700 font-medium focus:ring-2 focus:ring-blue-500/20"
           >
             <option value="">Tất cả phòng</option>
             {rooms.map(r => (
@@ -615,17 +605,17 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
             ))}
           </select>
 
-          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: '8px', padding: '4px', border: '1px solid #e2e8f0' }}>
-            <button onClick={() => navigateDay(-1)} style={{ padding: '4px 8px', border: 'none', background: 'transparent', cursor: 'pointer', color: '#475569', fontWeight: 'bold' }}>&lt;</button>
-            <button onClick={setToday} style={{ padding: '4px 12px', border: 'none', background: '#ffffff', borderRadius: '6px', cursor: 'pointer', color: '#0f172a', fontSize: '13px', fontWeight: '600', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>Hôm nay</button>
-            <button onClick={() => navigateDay(1)} style={{ padding: '4px 8px', border: 'none', background: 'transparent', cursor: 'pointer', color: '#475569', fontWeight: 'bold' }}>&gt;</button>
+          <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200/60">
+            <button onClick={() => navigateDay(-1)} className="px-2.5 py-1 text-slate-500 hover:text-slate-800 font-bold transition-colors">&lt;</button>
+            <button onClick={setToday} className="px-3 py-1 bg-white rounded-lg text-slate-800 text-[13px] font-semibold shadow-sm transition-shadow hover:shadow">Hôm nay</button>
+            <button onClick={() => navigateDay(1)} className="px-2.5 py-1 text-slate-500 hover:text-slate-800 font-bold transition-colors">&gt;</button>
           </div>
 
-          <div style={{ position: 'relative' }}>
-            <CalendarIcon size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+          <div className="relative">
+            <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="date"
-              style={{ width: '150px', padding: '8px 12px 8px 34px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', backgroundColor: '#f8fafc', fontSize: '14px', color: '#334155', fontWeight: '500' }}
+              className="w-[150px] py-2 pr-3 pl-9 rounded-xl border border-slate-200 bg-white text-sm outline-none text-slate-700 font-medium focus:ring-2 focus:ring-blue-500/20"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
             />
@@ -633,13 +623,13 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
         </div>
       </div>
 
-      <div className="ledger-grid-wrapper overflow-hidden relative">
+      <div className="flex-1 overflow-auto relative">
         <div
-          className="ledger-grid"
+          className="grid min-w-max bg-slate-200/50 gap-[1px] border-t border-slate-200/50"
           style={{ gridTemplateColumns: `80px repeat(${filteredRooms.length || 1}, minmax(190px, 1fr))` }}
         >
           {/* Header Row */}
-          <div className="ledger-col-header-corner"></div>
+          <div className="sticky top-0 left-0 z-20 bg-slate-50 border-b border-r border-slate-200/80"></div>
           {filteredRooms.map(room => {
             const isOccupied = bookings.some(b => {
               if (b.room_id !== room.room_id || b.status === "CANCELLED" || b.status === "COMPLETED") return false;
@@ -650,18 +640,18 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
             });
 
             return (
-              <div key={room.room_id} className="ledger-col-header">
-                <div className="room-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>{room.room_name}</span>
+              <div key={room.room_id} className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200/80 p-3 text-center">
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-bold text-slate-700">{room.room_name}</span>
                   {room.status === 'maintenance' || room.status === 'bảo trì' ? (
-                    <span style={{ fontSize: '10px', backgroundColor: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '4px', border: '1px solid #e2e8f0', fontWeight: 'bold' }}>🔧 Bảo trì</span>
+                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded border border-slate-300 font-bold">🔧 Bảo trì</span>
                   ) : (
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isOccupied ? '#ef4444' : '#10b981' }} title={isOccupied ? "Đang có cuộc họp" : "Rảnh"}></div>
+                    <div className={`w-2 h-2 rounded-full ${isOccupied ? 'bg-rose-500' : 'bg-emerald-500'}`} title={isOccupied ? "Đang có cuộc họp" : "Rảnh"}></div>
                   )}
                 </div>
-                <div className="room-meta" style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                  <div className="room-badge" style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '12px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>👥 {room.capacity} chỗ</div>
-                  <div className="room-badge" style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '12px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>📍 {room.location}</div>
+                <div className="flex gap-1.5 mt-2 justify-center">
+                  <div className="bg-white text-slate-500 text-[11px] px-2 py-0.5 rounded border border-slate-200/80 font-medium">👥 {room.capacity}</div>
+                  <div className="bg-white text-slate-500 text-[11px] px-2 py-0.5 rounded border border-slate-200/80 font-medium">📍 {room.location}</div>
                 </div>
               </div>
             );
@@ -675,12 +665,12 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
 
             return (
               <Fragment key={time}>
-                <div className="ledger-time-label relative border-b border-r border-slate-200/60 flex items-center justify-center text-slate-500 font-medium text-sm h-16">
+                <div className="sticky left-0 z-10 bg-slate-50 border-b border-r border-slate-200/80 flex items-start justify-end p-2 text-slate-500 font-semibold text-xs h-16">
                   {time}
                   {isCurrentHour && (
                     <div className="absolute left-full z-20 flex items-center" style={{ top: `${topOffset}%`, width: '2000px', pointerEvents: 'none' }}>
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-500 -ml-1 mr-1"></div>
-                      <div className="h-px bg-slate-500 w-full opacity-60"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 -ml-1 mr-1"></div>
+                      <div className="h-px bg-blue-500 w-full opacity-60"></div>
                     </div>
                   )}
                 </div>
@@ -721,25 +711,26 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
                   return (
                     <div
                       key={`${room.room_id}-${time}`}
-                      className={`ledger-cell h-16 border-b border-r border-slate-200/80 relative p-0 ${((isRestricted || isMaintenance) && !bookingToRender && !isOccupiedByAnother ? 'cursor-not-allowed' : '')}`}
+                      className={`h-16 border-b border-r border-slate-200/80 relative p-1 bg-white ${((isRestricted || isMaintenance) && !bookingToRender && !isOccupiedByAnother ? 'cursor-not-allowed' : '')}`}
                       style={{
                         ...(isMaintenance && !bookingToRender && !isOccupiedByAnother ? {
-                          backgroundImage: 'repeating-linear-gradient(45deg, #f1f5f9 25%, transparent 25%, transparent 50%, #f1f5f9 50%, #f1f5f9 75%, transparent 75%, transparent)',
+                          backgroundImage: 'repeating-linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 50%, #f8fafc 50%, #f8fafc 75%, transparent 75%, transparent)',
                           backgroundSize: '10px 10px',
-                          backgroundColor: 'rgba(241, 245, 249, 0.7)'
+                          backgroundColor: '#f1f5f9'
                         } : ((isRestricted && !bookingToRender && !isOccupiedByAnother) ? { backgroundColor: '#f8fafc' } : {}))
                       }}
                     >
                       {isInteractable && (
                         <div 
-                          className="w-full h-full text-slate-400 text-xs flex items-center justify-center font-normal select-none"
+                          className="w-full h-full rounded text-transparent hover:text-slate-400 hover:bg-slate-50 text-xs flex items-center justify-center font-medium select-none cursor-pointer transition-colors"
+                          onClick={() => handleCellClick(room?.room_id, time, isRestricted, bookingToRender)}
                         >
-                          Trống
+                          + Đặt phòng
                         </div>
                       )}
 
                       {isMaintenance && !bookingToRender && !isOccupiedByAnother && (
-                        <div className="w-full h-full bg-slate-100 text-slate-400 text-xs flex items-center justify-center font-medium cursor-not-allowed select-none">
+                        <div className="w-full h-full text-slate-400 text-xs flex items-center justify-center font-medium cursor-not-allowed select-none">
                           🔧 Bảo trì
                         </div>
                       )}
@@ -749,16 +740,28 @@ export default function TimetableGrid({ token, userRole, currentUserId }: Timeta
                         const bStart = safeStart.includes('T') ? safeStart.split('T')[1]?.substring(0, 5) || '' : safeStart.substring(0, 5);
                         const safeEnd = bookingToRender?.end_time || '';
                         const bEnd = safeEnd.includes('T') ? safeEnd.split('T')[1]?.substring(0, 5) || '' : safeEnd.substring(0, 5);
+                        const durationMins = timeToMinutes(bEnd) - timeToMinutes(bStart);
+                        const heightPercent = (durationMins / 60) * 100;
+                        const topOffset = ((timeToMinutes(bStart) % 60) / 60) * 100;
+                        
+                        let bgColor = 'bg-blue-600 hover:bg-blue-700'; // Default
+                        if (bookingToRender.status === 'COMPLETED') bgColor = 'bg-slate-500 hover:bg-slate-600';
+                        if (bookingToRender.status === 'IN_PROGRESS') bgColor = 'bg-emerald-600 hover:bg-emerald-700';
 
                         return (
                           /* Thẻ cuộc họp đã duyệt */
                           <div
-                            className="w-full h-full bg-slate-800 text-white p-2 rounded text-xs select-none shadow-sm cursor-pointer hover:bg-slate-700 transition-all overflow-hidden flex flex-col justify-between text-left"
-                            onClick={(e) => { e.stopPropagation(); handleCellClick(room?.room_id, time, isRestricted, bookingToRender); }}
+                            className={`absolute left-1 right-1 ${bgColor} text-white p-2 rounded-lg text-xs select-none shadow-md shadow-blue-500/20 cursor-pointer transition-all overflow-hidden flex flex-col z-10 border border-white/20 backdrop-blur-sm`}
+                            style={{
+                              top: `calc(${topOffset}% + 4px)`,
+                              height: `calc(${heightPercent}% - 8px)`,
+                              minHeight: '2.5rem'
+                            }}
+                            onClick={(e) => { e.stopPropagation(); handleCellClick(room?.room_id, bStart, isRestricted, bookingToRender); }}
                           >
-                            <div className="font-semibold text-white truncate" title={bookingToRender?.title || ''}>{bookingToRender?.title || 'Cuộc họp'}</div>
-                            <div className="text-[11px] text-slate-300 mt-1">👤 {bookingToRender?.organizer?.full_name || 'Người dùng'}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">⏰ {bStart} - {bEnd}</div>
+                            <div className="font-bold text-white truncate" title={bookingToRender?.title || ''}>{bookingToRender?.title || 'Cuộc họp'}</div>
+                            <div className="text-[11px] text-blue-100 truncate mt-0.5">👤 {bookingToRender?.organizer?.full_name || 'Người dùng'}</div>
+                            <div className="text-[10px] text-blue-200 mt-1 font-medium bg-black/20 self-start px-1.5 py-0.5 rounded">⏰ {bStart} - {bEnd}</div>
                           </div>
                         )
                       })()}

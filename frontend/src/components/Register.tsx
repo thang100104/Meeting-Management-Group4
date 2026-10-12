@@ -14,7 +14,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleRegister = async (e: React.FormEvent) => {
+    const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName || !email || !password || !confirmPassword) {
       alert('Vui lòng điền đầy đủ các thông tin!');
@@ -27,37 +27,34 @@ export default function Register() {
 
     setLoading(true);
     
-    // Simulate API delay
-    setTimeout(() => {
-      const registeredUsers = JSON.parse(localStorage.getItem('meetinghub_registered_users') || '[]');
+    try {
       const cleanEmail = email.trim().toLowerCase();
-      
-      const emailExists = registeredUsers.some((u: any) => u.email === cleanEmail);
-      if (emailExists) {
-        alert("Email này đã được sử dụng! Vui lòng dùng email khác.");
-        setLoading(false);
-        return;
+      // Import/Require API. We will use fetch or api from services.
+      // But we can just use the global fetch since we have API_BASE
+      const response = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          full_name: fullName,
+          password: password,
+          role_name: roleName
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Có lỗi xảy ra khi đăng ký!');
       }
 
-      const newUser = {
-        fullName,
-        email: cleanEmail,
-        password,
-        role: roleName,
-        avatarUrl: "",
-        phone: ""
-      };
-
-      registeredUsers.push(newUser);
-      localStorage.setItem('meetinghub_registered_users', JSON.stringify(registeredUsers));
-      localStorage.setItem('meetinghub_user', JSON.stringify(newUser));
-
       alert("✓ Đăng ký tài khoản thành công! Vui lòng đăng nhập.");
-      setLoading(false);
-      
-      // Navigate to login with the registered email
       navigate('/login', { state: { registeredEmail: cleanEmail } });
-    }, 800);
+      
+    } catch (error: any) {
+      alert(`[Lỗi]: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

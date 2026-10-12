@@ -59,14 +59,6 @@ const mapApiEquipmentToFrontend = (apiEq: any, rooms: any[]): Device => {
 const mapDeviceToApi = (dev: Device, rooms: any[]): any => {
   // Look up room_id by location name
   let roomId = null;
-  if (dev.allocation === 'Cố định') {
-    const matchedRoom = rooms.find(r => 
-      (r.room_name === dev.location) || 
-      (r.name === dev.location) ||
-      (r.room_name && dev.location && r.room_name.includes(dev.location))
-    );
-    roomId = matchedRoom?.room_id || matchedRoom?.id || null;
-  }
   return {
     equipment_name: dev.name,
     equipment_type: typeFrontToBack[dev.type] || dev.type.toUpperCase(),
@@ -527,18 +519,7 @@ const DevicesView: React.FC = () => {
                 </div>
                 
                 <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#64748b' }}>Phân loại:</span>
-                    <span style={{ fontSize: '12px', fontWeight: '500', padding: '2px 8px', borderRadius: '6px', backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}>
-                      {device.allocation}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#64748b' }}>Vị trí:</span>
-                    <span style={{ fontSize: '12px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px', color: '#334155', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      <MapPin size={12} /> {device.location}
-                    </span>
-                  </div>
+
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '13px', color: '#64748b' }}>Trạng thái:</span>
                     <select 
@@ -668,20 +649,7 @@ const DevicesView: React.FC = () => {
                     <option value="Other">Khác</option>
                   </select>
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#334155', marginBottom: '6px' }}>Phân bổ *</label>
-                  <select value={formData.allocation} onChange={e => setFormData({...formData, allocation: e.target.value as any})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px', backgroundColor: '#fff', cursor: 'pointer' }}>
-                    <option value="Cố định">Cố định theo phòng</option>
-                    <option value="Di động">Di động dùng chung</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#334155', marginBottom: '6px' }}>Vị trí / Phòng gán *</label>
-                  <select value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px', backgroundColor: '#fff', cursor: 'pointer' }}>
-                    <option value="Kho thiết bị di động">Kho thiết bị di động</option>
-                    {availableRooms.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </div>
+                {/* Removed Phân bổ and Vị trí */}
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#334155', marginBottom: '6px' }}>Trạng thái hiện tại *</label>
                   <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px', backgroundColor: '#fff', cursor: 'pointer' }}>

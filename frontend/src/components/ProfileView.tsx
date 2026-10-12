@@ -192,7 +192,13 @@ export default function ProfileView() {
             <h2 className="text-lg font-bold text-slate-900 truncate px-2">{userProfile.fullName}</h2>
             <p className="text-sm text-slate-500 mt-0.5 mb-4 truncate px-2">{userProfile.email}</p>
             <span className="inline-flex items-center px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-semibold border border-indigo-100 shadow-sm">
-              <Shield size={12} className="mr-1.5" /> {userProfile.role}
+              <Shield size={12} className="mr-1.5" /> {
+                userProfile.role === 'LECTURER' ? 'Giảng viên' :
+                userProfile.role === 'STUDENT' ? 'Sinh viên' :
+                userProfile.role === 'ADMIN' ? 'Quản trị viên' :
+                userProfile.role === 'STAFF' ? 'Cán bộ phòng' :
+                userProfile.role
+              }
             </span>
           </div>
 
@@ -257,7 +263,13 @@ export default function ProfileView() {
                     <input
                       type="text"
                       readOnly
-                      value={userProfile.role}
+                      value={
+                        userProfile.role === 'LECTURER' ? 'Giảng viên' :
+                        userProfile.role === 'STUDENT' ? 'Sinh viên' :
+                        userProfile.role === 'ADMIN' ? 'Quản trị viên' :
+                        userProfile.role === 'STAFF' ? 'Cán bộ phòng' :
+                        userProfile.role
+                      }
                       className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-medium text-slate-500 cursor-not-allowed outline-none"
                     />
                   </div>

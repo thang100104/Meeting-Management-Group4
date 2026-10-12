@@ -16,6 +16,7 @@ import ProfileView from './components/ProfileView';
 import ApprovalsView from './components/ApprovalsView';
 import RoomsView from './components/RoomsView';
 import LecturerDashboard from './components/LecturerDashboard';
+import StudentDashboard from './components/StudentDashboard';
 import { NotificationProvider } from './context/NotificationContext';
 import NotificationManagement from './components/NotificationManagement';
 import UserManagement from './components/UserManagement';
@@ -85,6 +86,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/lecturer" element={<LecturerDashboard />} />
+          <Route path="/student" element={<StudentDashboard />} />
           <Route path="/auth/google" element={<GoogleAuth onLoginSuccess={() => { }} />} />
           <Route path="/auth/microsoft" element={<MicrosoftAuth onLoginSuccess={() => { }} />} />
         </Routes>

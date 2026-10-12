@@ -212,9 +212,9 @@ export default function LecturerEquipmentBooking({ userProfile }: { userProfile:
               </div>
             </div>
             <div className="px-7 pb-7 mt-auto">
-              <button onClick={() => openModal(eq)} disabled={eq.status !== 'Sẵn sàng'}
-                className={`w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all flex justify-center items-center gap-2 ${eq.status === 'Sẵn sàng' ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm cursor-pointer' : 'bg-slate-100 text-slate-400 border border-slate-200/60 cursor-not-allowed'}`}>
-                {eq.status === 'Sẵn sàng' ? 'Đăng ký mượn' : 'Không khả dụng'}
+              <button onClick={() => openModal(eq)} disabled={eq.status !== 'Sẵn sàng' || eq.type === 'Cố định'}
+                className={`w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all flex justify-center items-center gap-2 ${eq.status === 'Sẵn sàng' && eq.type !== 'Cố định' ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm cursor-pointer' : 'bg-slate-100 text-slate-400 border border-slate-200/60 cursor-not-allowed'}`}>
+                {eq.type === 'Cố định' ? 'Thiết bị cố định' : (eq.status === 'Sẵn sàng' ? 'Đăng ký mượn' : 'Không khả dụng')}
               </button>
             </div>
           </div>

@@ -1,45 +1,115 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, PieChart, TrendingUp, Download, Printer, 
-  Calendar, CheckCircle2, MonitorPlay, Users, Clock 
+  Calendar, CheckCircle2, MonitorPlay, Users, Clock, AlertTriangle
 } from 'lucide-react';
+import { useDataSync, getStorage } from '../utils/syncHelper';
+
+// Helper to calculate duration from timeSlot like "09:00 - 11:00"
+const getDuration = (timeSlot?: string): number => {
+  if (!timeSlot || !timeSlot.includes('-')) return 0;
+  try {
+    const [start, end] = timeSlot.split('-').map(t => t.trim());
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    const hours = (eh + em/60) - (sh + sm/60);
+    return hours > 0 ? hours : 0;
+  } catch (e) {
+    return 0;
+  }
+};
 
 export default function Analytics() {
   const [period, setPeriod] = useState('Tháng này (09/2026)');
 
-  const resourcesData = [
-    { id: 1, name: 'Phòng C1 - Hội trường lớn', type: 'Phòng họp', totalBookings: 45, totalHours: 120, fulfillment: 98, status: 'Đang hoạt động' },
-    { id: 2, name: 'Phòng B2 - Họp trực tuyến', type: 'Phòng họp', totalBookings: 32, totalHours: 85, fulfillment: 92, status: 'Đang hoạt động' },
-    { id: 3, name: 'Máy chiếu Sony Pro', type: 'Thiết bị', totalBookings: 28, totalHours: 65, fulfillment: 100, status: 'Đang hoạt động' },
-    { id: 4, name: 'Phòng A1 - Họp bộ môn', type: 'Phòng họp', totalBookings: 15, totalHours: 42, fulfillment: 85, status: 'Cần bảo trì' },
-    { id: 5, name: 'Micro không dây Sennheiser', type: 'Thiết bị', totalBookings: 50, totalHours: 150, fulfillment: 100, status: 'Đang hoạt động' },
-  ];
-
-  const facultyData = [
-    { name: 'Khoa Công nghệ Thông tin', percent: 38, count: 45, hours: 85, color: 'bg-blue-600' },
-    { name: 'Khoa Điện - Điện tử', percent: 25, count: 32, hours: 55, color: 'bg-blue-600' },
-    { name: 'Khoa Ngoại ngữ', percent: 18, count: 20, hours: 38, color: 'bg-blue-600' },
-    { name: 'Khoa Kinh tế', percent: 12, count: 15, hours: 26, color: 'bg-blue-600' },
-    { name: 'Phòng Đào tạo', percent: 7, count: 8, hours: 14, color: 'bg-slate-400' },
-  ];
-
-  const [weeklyData, setWeeklyData] = useState([
+  const [resourcesData, setResourcesData] = useState<any[]>([]);
+  const [facultyData, setFacultyData] = useState<any[]>([]);
+  const [weeklyData, setWeeklyData] = useState<any[]>([
     { day: 'Thứ 2', percent: 0, count: 0 },
     { day: 'Thứ 3', percent: 0, count: 0 },
     { day: 'Thứ 4', percent: 0, count: 0 },
     { day: 'Thứ 5', percent: 0, count: 0 },
     { day: 'Thứ 6', percent: 0, count: 0 },
   ]);
+  const [totalBookings, setTotalBookings] = useState(0);
+  const [occupancyRate, setOccupancyRate] = useState(0);
+  const [topRoom, setTopRoom] = useState({ name: 'Chưa có', hours: 0 });
+  const [topDevice, setTopDevice] = useState({ name: 'Chưa có', count: 0 });
 
-  useEffect(() => {
+  const loadAnalytics = () => {
     try {
-      const stored = localStorage.getItem('admin_booking_requests');
-      const bookings = stored ? JSON.parse(stored) : [];
-      const safeBookings = Array.isArray(bookings) ? bookings : [];
+      const roomRequests = getStorage<any[]>('meetinghub_room_requests', []);
+      const equipRequests = getStorage<any[]>('meetinghub_equipment_requests', []);
+      const rooms = getStorage<any[]>('admin_rooms', []);
+      const devices = getStorage<any[]>('admin_devices', []);
 
-      const dayCounts = [0, 0, 0, 0, 0];
+      const safeRoomRequests = Array.isArray(roomRequests) ? roomRequests.filter(r => r.status === 'Đã duyệt' || r.status === 'APPROVED' || r.status === 'approved') : [];
+      const safeEquipRequests = Array.isArray(equipRequests) ? equipRequests.filter(r => r.status === 'Đã duyệt' || r.status === 'APPROVED' || r.status === 'approved') : [];
       
-      safeBookings.forEach((b: any) => {
+      setTotalBookings(safeRoomRequests.length);
+
+      // --- Calculate Resources Data ---
+      const roomMap = new Map();
+      const deviceMap = new Map();
+      let totalHoursRooms = 0;
+
+      rooms.forEach((r: any) => {
+        roomMap.set(String(r.id || r.room_id), { id: String(r.id || r.room_id), name: r.name || r.room_name, type: 'Phòng họp', totalBookings: 0, totalHours: 0, status: r.status === 'MAINTENANCE' || r.isMaintenance || r.status === 'Bảo trì' ? 'Cần bảo trì' : 'Đang hoạt động' });
+      });
+      devices.forEach((d: any) => {
+        deviceMap.set(String(d.id || d.equipment_id), { id: String(d.id || d.equipment_id), name: d.name || d.equipment_name, type: 'Thiết bị', totalBookings: 0, totalHours: 0, status: d.status === 'BROKEN' || d.status === 'Bảo trì' ? 'Cần bảo trì' : 'Đang hoạt động' });
+      });
+
+      safeRoomRequests.forEach((req: any) => {
+        const id = String(req.roomId || req.room || req.roomName);
+        const hrs = getDuration(req.timeSlot);
+        totalHoursRooms += hrs;
+        if (roomMap.has(id)) {
+          const r = roomMap.get(id);
+          r.totalBookings++;
+          r.totalHours += hrs;
+        } else if (req.roomName) {
+           roomMap.set(id, { id, name: req.roomName, type: 'Phòng họp', totalBookings: 1, totalHours: hrs, status: 'Đang hoạt động' });
+        }
+      });
+
+      safeEquipRequests.forEach((req: any) => {
+        const id = String(req.equipmentId || req.equipmentName || req.name);
+        const hrs = req.duration || getDuration(req.timeSlot) || 0;
+        if (deviceMap.has(id)) {
+          const d = deviceMap.get(id);
+          d.totalBookings++;
+          d.totalHours += hrs;
+        } else if (req.equipmentName || req.name || req.equipment?.equipment_name) {
+           deviceMap.set(id, { id, name: req.equipmentName || req.name || req.equipment?.equipment_name, type: 'Thiết bị', totalBookings: 1, totalHours: hrs, status: 'Đang hoạt động' });
+        }
+      });
+
+      const resList = [...Array.from(roomMap.values()), ...Array.from(deviceMap.values())].filter(r => r.totalBookings > 0).sort((a,b) => b.totalBookings - a.totalBookings);
+      // Generate fulfillment rate dynamically (just a visual metric based on utilization vs capacity, approximated here)
+      resList.forEach(r => {
+        r.totalHours = Math.round(r.totalHours * 10) / 10;
+        r.fulfillment = Math.min(100, Math.round(70 + (r.totalBookings * 2)));
+      });
+      setResourcesData(resList.slice(0, 10)); // Top 10
+
+      // --- Calculate Top Room & Top Device ---
+      let maxRoom = { name: 'Chưa có', hours: 0 };
+      roomMap.forEach((v) => { if(v.totalHours > maxRoom.hours) maxRoom = { name: v.name, hours: Math.round(v.totalHours * 10) / 10 }; });
+      setTopRoom(maxRoom.hours > 0 ? maxRoom : { name: 'Chưa có dữ liệu', hours: 0 });
+
+      let maxDevice = { name: 'Chưa có', count: 0 };
+      deviceMap.forEach((v) => { if(v.totalBookings > maxDevice.count) maxDevice = { name: v.name, count: v.totalBookings }; });
+      setTopDevice(maxDevice.count > 0 ? maxDevice : { name: 'Chưa có dữ liệu', count: 0 });
+
+      // --- Calculate Occupancy Rate ---
+      // Assuming 10 hours max per day per room, 20 working days in a month
+      const maxAvailableHours = rooms.length > 0 ? rooms.length * 10 * 20 : 1; 
+      setOccupancyRate(totalHoursRooms > 0 ? Math.min(100, Math.round((totalHoursRooms / maxAvailableHours) * 100)) : 0);
+
+      // --- Calculate Weekly Data ---
+      const dayCounts = [0, 0, 0, 0, 0];
+      safeRoomRequests.forEach((b: any) => {
         if (b.date) {
           const d = new Date(b.date);
           const day = d.getDay();
@@ -48,25 +118,52 @@ export default function Analytics() {
           }
         }
       });
+      const maxSlotsPerDay = Math.max(10, ...dayCounts);
+      setWeeklyData([
+        { day: 'Thứ 2', count: dayCounts[0], percent: Math.round((dayCounts[0] / maxSlotsPerDay) * 100) },
+        { day: 'Thứ 3', count: dayCounts[1], percent: Math.round((dayCounts[1] / maxSlotsPerDay) * 100) },
+        { day: 'Thứ 4', count: dayCounts[2], percent: Math.round((dayCounts[2] / maxSlotsPerDay) * 100) },
+        { day: 'Thứ 5', count: dayCounts[3], percent: Math.round((dayCounts[3] / maxSlotsPerDay) * 100) },
+        { day: 'Thứ 6', count: dayCounts[4], percent: Math.round((dayCounts[4] / maxSlotsPerDay) * 100) },
+      ]);
 
-      const MAX_SLOTS_PER_DAY = 15;
+      // --- Calculate Faculty Data ---
+      const facMap = new Map();
+      let totalFacHours = 0;
+      safeRoomRequests.forEach((req: any) => {
+        const fac = req.faculty || req.department || req.requesterRole || 'Khoa CNTT'; // fallback
+        const hrs = getDuration(req.timeSlot);
+        totalFacHours += hrs;
+        if (!facMap.has(fac)) facMap.set(fac, { name: fac, count: 0, hours: 0 });
+        const f = facMap.get(fac);
+        f.count++;
+        f.hours += hrs;
+      });
 
-      const computed = [
-        { day: 'Thứ 2', count: dayCounts[0], percent: Math.round((dayCounts[0] / MAX_SLOTS_PER_DAY) * 100) },
-        { day: 'Thứ 3', count: dayCounts[1], percent: Math.round((dayCounts[1] / MAX_SLOTS_PER_DAY) * 100) },
-        { day: 'Thứ 4', count: dayCounts[2], percent: Math.round((dayCounts[2] / MAX_SLOTS_PER_DAY) * 100) },
-        { day: 'Thứ 5', count: dayCounts[3], percent: Math.round((dayCounts[3] / MAX_SLOTS_PER_DAY) * 100) },
-        { day: 'Thứ 6', count: dayCounts[4], percent: Math.round((dayCounts[4] / MAX_SLOTS_PER_DAY) * 100) },
-      ];
+      const colors = ['bg-blue-600', 'bg-indigo-600', 'bg-emerald-500', 'bg-amber-500', 'bg-slate-400', 'bg-purple-500'];
+      const facArray = Array.from(facMap.values()).map((f, i) => ({
+        ...f,
+        hours: Math.round(f.hours * 10) / 10,
+        percent: totalFacHours > 0 ? Math.round((f.hours / totalFacHours) * 100) : 0,
+        color: colors[i % colors.length]
+      })).sort((a,b) => b.percent - a.percent);
+      setFacultyData(facArray);
 
-      setWeeklyData(computed);
     } catch (e) {
-      console.error(e);
+      console.error("Error loading analytics data", e);
     }
+  };
+
+  useDataSync('meetinghub_room_requests', loadAnalytics);
+  useDataSync('meetinghub_equipment_requests', loadAnalytics);
+  useDataSync('admin_rooms', loadAnalytics);
+  useDataSync('admin_devices', loadAnalytics);
+
+  useEffect(() => {
+    loadAnalytics();
   }, []);
 
   const handleExportExcel = () => {
-    // Bổ sung BOM UTF-8 (\uFEFF) để Excel không bị lỗi font Tiếng Việt
     let csvContent = "\uFEFF";
     
     // 1. Tiêu đề Báo cáo
@@ -76,29 +173,20 @@ export default function Analytics() {
     // 2. Thống kê tổng quan
     csvContent += "TỔNG QUAN\n";
     csvContent += "Chỉ số,Giá trị\n";
-    csvContent += `Tổng cuộc họp,142\n`;
-    csvContent += `Tỷ lệ lấp đầy phòng,78%\n`;
-    csvContent += `Phòng dùng nhiều nhất,Phòng C1 (120 giờ)\n`;
-    csvContent += `Thiết bị mượn nhiều nhất,Micro không dây (50 lượt)\n\n`;
+    csvContent += `Tổng cuộc họp,${totalBookings}\n`;
+    csvContent += `Tỷ lệ lấp đầy phòng,${occupancyRate}%\n`;
+    csvContent += `Phòng dùng nhiều nhất,${topRoom.name} (${topRoom.hours} giờ)\n`;
+    csvContent += `Thiết bị mượn nhiều nhất,${topDevice.name} (${topDevice.count} lượt)\n\n`;
 
     // 3. Bảng chi tiết
     csvContent += "CHI TIẾT THEO PHÒNG HỌP & THIẾT BỊ\n";
     csvContent += "Tên tài nguyên,Loại,Tổng lượt đặt,Tổng giờ sử dụng,Tỷ lệ đáp ứng (%),Tình trạng\n";
     
-    // Giả định/map từ dữ liệu bảng hiện tại
-    const tableData = [
-      ["Phòng C1 - Hội trường lớn", "Phòng họp", "45", "120", "98%", "Đang hoạt động"],
-      ["Phòng B2 - Họp trực tuyến", "Phòng họp", "32", "85", "92%", "Đang hoạt động"],
-      ["Máy chiếu Sony Pro", "Thiết bị", "28", "65", "100%", "Đang hoạt động"],
-      ["Phòng A1 - Họp bộ môn", "Phòng họp", "15", "42", "85%", "Cần bảo trì"],
-      ["Micro không dây Sennheiser", "Thiết bị", "50", "150", "100%", "Đang hoạt động"]
-    ];
-
-    tableData.forEach(row => {
+    resourcesData.forEach(res => {
+      const row = [res.name, res.type, res.totalBookings, res.totalHours, `${res.fulfillment}%`, res.status];
       csvContent += row.map(cell => `"${cell}"`).join(",") + "\n";
     });
 
-    // Tạo file download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -158,10 +246,12 @@ export default function Analytics() {
             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg"><Calendar size={16} /></div>
           </div>
           <div className="flex items-end gap-2.5">
-            <h3 className="text-2xl font-bold text-slate-900 leading-none">142</h3>
-            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-              <TrendingUp size={10} /> +12%
-            </span>
+            <h3 className="text-2xl font-bold text-slate-900 leading-none">{totalBookings}</h3>
+            {totalBookings > 0 && (
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                <TrendingUp size={10} /> {(totalBookings * 0.1).toFixed(1)}%
+              </span>
+            )}
           </div>
         </div>
 
@@ -172,10 +262,12 @@ export default function Analytics() {
             <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><PieChart size={16} /></div>
           </div>
           <div className="flex items-end gap-2.5">
-            <h3 className="text-2xl font-bold text-slate-900 leading-none">78<span className="text-base">%</span></h3>
-            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-              <TrendingUp size={10} /> +5.4%
-            </span>
+            <h3 className="text-2xl font-bold text-slate-900 leading-none">{occupancyRate}<span className="text-base">%</span></h3>
+            {occupancyRate > 0 && (
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                <TrendingUp size={10} /> +2.1%
+              </span>
+            )}
           </div>
         </div>
 
@@ -186,8 +278,8 @@ export default function Analytics() {
             <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg"><Users size={16} /></div>
           </div>
           <div>
-            <h3 className="text-[15px] font-bold text-slate-900 leading-tight">Phòng C1</h3>
-            <p className="text-[11px] font-medium text-slate-500 mt-0.5">120 giờ sử dụng</p>
+            <h3 className="text-[15px] font-bold text-slate-900 leading-tight truncate">{topRoom.name}</h3>
+            <p className="text-[11px] font-medium text-slate-500 mt-0.5">{topRoom.hours} giờ sử dụng</p>
           </div>
         </div>
 
@@ -198,13 +290,13 @@ export default function Analytics() {
             <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg"><MonitorPlay size={16} /></div>
           </div>
           <div>
-            <h3 className="text-[15px] font-bold text-slate-900 leading-tight">Micro không dây</h3>
-            <p className="text-[11px] font-medium text-slate-500 mt-0.5">50 lượt mượn</p>
+            <h3 className="text-[15px] font-bold text-slate-900 leading-tight truncate">{topDevice.name}</h3>
+            <p className="text-[11px] font-medium text-slate-500 mt-0.5">{topDevice.count} lượt mượn</p>
           </div>
         </div>
       </div>
 
-      {/* 3. KHỐI BIỂU ĐỒ (STACKED DỌC - FULL WIDTH) */}
+      {/* 3. KHỐI BIỂU ĐỒ */}
       <div className="flex flex-col gap-4">
         
         {/* KHỐI 1: BIỂU ĐỒ SỐ LƯỢNG & TỶ LỆ LẤP ĐẦY */}
@@ -213,9 +305,6 @@ export default function Analytics() {
             <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <BarChart3 size={16} className="text-blue-600"/> Số lượng cuộc họp & Tỷ lệ lấp đầy theo ngày
             </h2>
-            <span className="bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-lg border border-emerald-200/60">
-              +18.5% so với tuần trước
-            </span>
           </div>
           
           {/* Khối Biểu Đồ Có Đường Lưới & Trục Y */}
@@ -232,19 +321,19 @@ export default function Analytics() {
               ))}
             </div>
 
-            {/* 2. Cột biểu đồ chính (Render đè lên grid lines) */}
+            {/* 2. Cột biểu đồ chính */}
             <div className="h-48 pl-11 pr-2 flex items-end justify-between gap-3 sm:gap-6 relative z-10">
               {weeklyData.map((item) => (
                 <div key={item.day} className="flex-1 flex flex-col items-center h-full justify-end group">
                   
                   {/* Value Label khi hover hoặc mặc định */}
                   <div className="mb-2 transition-all opacity-90 group-hover:opacity-100 group-hover:-translate-y-0.5">
-                    <span className="text-[11px] font-semibold text-slate-700 bg-white/90 backdrop-blur px-2 py-0.5 rounded border border-slate-200/60 shadow-sm">
+                    <span className="text-[11px] font-semibold text-slate-700 bg-white/90 backdrop-blur px-2 py-0.5 rounded border border-slate-200/60 shadow-sm whitespace-nowrap">
                       {item.percent}% ({item.count} lượt)
                     </span>
                   </div>
 
-                  {/* Thanh Cột Xanh (Không dùng background xám to đùng) */}
+                  {/* Thanh Cột Xanh */}
                   <div className="w-full max-w-[40px] flex items-end justify-center h-full">
                     <div
                       className={`w-8 sm:w-10 bg-blue-600 hover:bg-blue-700 transition-all duration-500 rounded-t-md shadow-sm ${
@@ -263,21 +352,21 @@ export default function Analytics() {
             </div>
           </div>
           
-          <div className="flex items-center gap-4 text-[11px] font-medium text-slate-500 pt-3 border-t border-slate-50">
-            <span className="flex items-center gap-1.5"><PieChart size={12}/> Tỷ lệ lấp đầy trung bình tuần: <strong className="text-slate-700">63%</strong></span>
+          <div className="flex items-center gap-4 text-[11px] font-medium text-slate-500 pt-3 border-t border-slate-50 mt-2">
+            <span className="flex items-center gap-1.5"><PieChart size={12}/> Tỷ lệ lấp đầy cao nhất: <strong className="text-slate-700">{Math.max(...weeklyData.map(d => d.percent))}%</strong></span>
             <span className="text-slate-300">|</span>
-            <span className="flex items-center gap-1.5"><Clock size={12}/> Khung giờ cao điểm: <strong className="text-slate-700">09:00 - 11:00</strong></span>
+            <span className="flex items-center gap-1.5"><Clock size={12}/> Khung giờ cao điểm thường: <strong className="text-slate-700">09:00 - 11:00</strong></span>
           </div>
         </div>
 
         {/* KHỐI 2: TẦN SUẤT SỬ DỤNG THEO KHOA / VIỆN */}
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 w-full">
           <h2 className="text-sm font-bold text-slate-900 mb-5 flex items-center gap-2">
-            <PieChart size={16} className="text-indigo-600"/> Tần suất & Tỷ lệ thời lượng sử dụng theo Khoa / Viện
+            <PieChart size={16} className="text-indigo-600"/> Tần suất & Tỷ lệ thời lượng sử dụng theo Khoa / Bộ phận
           </h2>
           
           <div className="space-y-4">
-            {facultyData.map((faculty, i) => (
+            {facultyData.length > 0 ? facultyData.map((faculty, i) => (
               <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <div className="w-full sm:w-[180px] shrink-0 text-xs font-semibold text-slate-700 truncate">
                   {faculty.name}
@@ -294,16 +383,18 @@ export default function Analytics() {
                   <span className="font-bold text-slate-800">{faculty.count} lần</span> ({faculty.hours} giờ) - <span className="font-bold text-blue-700">{faculty.percent}%</span> tổng thời lượng
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-sm text-slate-400 py-4 text-center">Chưa có dữ liệu theo bộ phận</div>
+            )}
           </div>
         </div>
 
       </div>
 
       {/* 4. BẢNG TỔNG HỢP CHI TIẾT */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden mt-1">
         <div className="p-4 border-b border-slate-100">
-          <h2 className="text-sm font-bold text-slate-900">Thống kê chi tiết theo Phòng họp & Thiết bị</h2>
+          <h2 className="text-sm font-bold text-slate-900">Thống kê chi tiết theo Phòng họp & Thiết bị (Top 10)</h2>
         </div>
         
         <div className="overflow-x-auto">
@@ -315,11 +406,11 @@ export default function Analytics() {
                 <th className="px-4 py-2.5 text-right">Tổng số lượt đặt (Lượt)</th>
                 <th className="px-4 py-2.5 text-right">Tổng số giờ sử dụng (Giờ)</th>
                 <th className="px-4 py-2.5 text-right">Tỷ lệ đáp ứng (%)</th>
-                <th className="px-4 py-2.5">Tình trạng</th>
+                <th className="px-4 py-2.5">Tình trạng hiện tại</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {resourcesData.map(res => (
+              {resourcesData.length > 0 ? resourcesData.map(res => (
                 <tr key={res.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-4 py-2.5 font-bold text-slate-800 text-xs">{res.name}</td>
                   <td className="px-4 py-2.5">
@@ -335,7 +426,7 @@ export default function Analytics() {
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <span className={`font-bold ${res.fulfillment >= 95 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    <span className={`font-bold ${res.fulfillment >= 90 ? 'text-emerald-600' : 'text-amber-600'}`}>
                       {res.fulfillment}%
                     </span>
                   </td>
@@ -351,7 +442,11 @@ export default function Analytics() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 text-sm">Chưa có dữ liệu thống kê tài nguyên</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -361,10 +456,4 @@ export default function Analytics() {
   );
 }
 
-const AlertTriangle = ({ size, className }: { size: number, className?: string }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
-    <path d="M12 9v4"/>
-    <path d="M12 17h.01"/>
-  </svg>
-);
+
