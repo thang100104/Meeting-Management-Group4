@@ -1,0 +1,561 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}</style><style>:root{color-scheme:light dark;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}}:root[data-theme="dark"]{color-scheme:dark;--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}:root[data-theme="light"]{color-scheme:light}@media print{:root,:root[data-theme="dark"]{color-scheme:light;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}}body{background:var(--md-bg);color:var(--md-text);max-width:720px;margin:0 auto;padding:32px;display:flex;flex-direction:column;gap:10px;font:14px/1.55 -apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif;overflow-wrap:break-word}body>:first-child{margin-top:0}h1,h2,h3,h4,h5,h6{margin:6px 0 0;line-height:1.25;font-weight:600;text-wrap:balance}h1{font-size:1.35em}h2{font-size:1.15em;color:var(--md-muted)}h3,h4,h5,h6{font-size:1em}p,ul,ol,blockquote,table,pre,hr{margin:0}strong{font-weight:600}a{color:var(--md-link);text-decoration:none}a:hover{text-decoration:underline}ul,ol{display:flex;flex-direction:column;gap:6px;padding-left:22px}ul{list-style:disc}ol{list-style:decimal}:is(li,td,th)>*+:is(p,ul,ol,blockquote){margin-top:6px}blockquote{display:flex;flex-direction:column;gap:10px;border-left:2px solid var(--md-rule);padding-left:10px;color:var(--md-muted)}:not(pre)>code{background:var(--md-fill);padding:1px 3px;border-radius:4px;font:.92em 'SF Mono',ui-monospace,Menlo,Consolas,monospace}a>code{background:none;color:inherit}pre{background:var(--md-fill);padding:10px 12px;border-radius:6px;overflow-x:auto;font:12px/1.5 'SF Mono',ui-monospace,Menlo,Consolas,monospace;margin-block:4px}pre code{background:none;padding:0;font:inherit}table{width:100%;border-collapse:separate;border-spacing:2px;font:inherit}th,td{padding:6px 8px;border-radius:3px;text-align:left;vertical-align:top}th{background:var(--md-fill-strong);font-weight:600}td{background:var(--md-fill)}:is(th,td) :not(pre)>code{background:transparent}hr{border:0;border-top:1px solid var(--md-rule-strong);margin-block:10px}img{max-width:100%;height:auto;border-radius:4px}</style>
+</head><body>
+<h1>Thiết kế sơ bộ — Phiên bản đầu (MVP) Hệ thống Quản lý Lịch họp</h1>
+<blockquote>
+<p>Dựa trên: Product Backlog (Vision/Goals + 28 feature), ERD ban đầu (<code>database.drawio</code>), Acceptance Criteria và quyết định Q1–Q10 đã chốt trong <code>docs/requirements/OPEN_DECISIONS.md</code>. Vì bạn triển khai một mình, tài liệu ưu tiên <strong>luồng chính</strong>: Tạo cuộc họp → kiểm tra trùng/gợi ý → xác nhận nếu muốn tạo dù trùng → lưu participant, attachment và reminder → xem/sửa/hủy → email mời/RSVP.</p>
+</blockquote>
+<p><strong>Quyết định đã chốt</strong> (chọn phương án A cho Q1–Q10 trong <code>docs/requirements/OPEN_DECISIONS.md</code>):</p>
+<ul>
+<li>UI dùng múi giờ Asia/Ho_Chi_Minh; API nhận ISO 8601 có offset; thời gian lưu UTC; lịch bắt đầu quá khứ không hợp lệ.</li>
+<li>Xung đột phòng/người → trả cảnh báo và tối đa 3 khung giờ trống gần nhất; mặc định không lưu. Sau xác nhận rõ “Tạo dù trùng”, cho phép lưu kèm warning.</li>
+<li>Cuộc họp vẫn được lưu dù gửi email thất bại (gửi email tách khỏi transaction lưu dữ liệu).</li>
+<li>Người tổ chức tự động là người tham dự, trạng thái &quot;Accepted&quot;.</li>
+<li>Người tổ chức phải mời ít nhất một người khác; nếu organizer xuất hiện trong request participant thì loại trùng.</li>
+<li>Người dùng thường chỉ xem cuộc họp do mình tổ chức hoặc được mời; Admin được xem mọi cuộc họp.</li>
+<li>MVP dùng tài khoản/phòng được seed hoặc tạo sẵn; CRUD quản trị đầy đủ không chặn luồng lịch họp đầu tiên.</li>
+<li>V1 gửi email mời có tệp .ics và link RSVP token riêng cho từng người được mời nội bộ (organizer tự Accepted, không cần RSVP token); token lưu dạng hash, hết hạn khi cuộc họp kết thúc, không yêu cầu đăng nhập.</li>
+<li>Nhắc lịch email bắt buộc trước 15 phút; tệp đính kèm cho phép tối đa 5 file PDF/DOCX/XLSX/PPTX, 10 MB/file.</li>
+<li>Email reminder chạy qua worker đọc công việc đến hạn từ PostgreSQL; lưu file local trong dev qua storage interface có thể chuyển object storage khi deploy.</li>
+<li>Form đã chỉnh sửa phải hỏi xác nhận khi đóng; chọn Quay lại giữ nguyên dữ liệu.</li>
+</ul>
+<hr>
+<h2>1. Phạm vi phiên bản đầu</h2>
+<h3>1.1 Trong phạm vi (V1)</h3>
+<table>
+<thead>
+<tr>
+<th>Epic</th>
+<th>Feature</th>
+<th>Ghi chú</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Quản lý lịch họp</td>
+<td>Tạo cuộc họp</td>
+<td>Luồng chính</td>
+</tr>
+<tr>
+<td>Quản lý lịch họp</td>
+<td>Sửa cuộc họp</td>
+<td>Chỉ organizer/Admin</td>
+</tr>
+<tr>
+<td>Quản lý lịch họp</td>
+<td>Hủy cuộc họp</td>
+<td>Soft-cancel, không xóa cứng</td>
+</tr>
+<tr>
+<td>Quản lý lịch họp</td>
+<td>Mời &amp; thông báo qua email</td>
+<td>Gửi khi tạo/sửa/hủy; kèm ICS + RSVP link; reminder email T-15 phút</td>
+</tr>
+<tr>
+<td>Quản lý lịch họp</td>
+<td>Đính kèm tài liệu</td>
+<td>0–5 file PDF/DOCX/XLSX/PPTX, tối đa 10 MB/file</td>
+</tr>
+<tr>
+<td>Quản lý lịch họp</td>
+<td>Xem lịch theo khoảng thời gian</td>
+<td>Danh sách/lịch cơ bản</td>
+</tr>
+<tr>
+<td>Quản lý phòng họp</td>
+<td>Xem danh sách phòng trống</td>
+<td>Cần để chọn phòng khi tạo</td>
+</tr>
+<tr>
+<td>Quản lý phòng họp</td>
+<td>Đặt/hủy phòng</td>
+<td>Gộp vào luồng tạo/hủy cuộc họp, không phải API riêng</td>
+</tr>
+<tr>
+<td>Quản lý phòng họp</td>
+<td>Đọc danh sách phòng (Admin quản lý ngoài luồng MVP)</td>
+<td>Dữ liệu phòng được seed; CRUD đầy đủ để sau</td>
+</tr>
+<tr>
+<td>Người dùng &amp; quyền hạn</td>
+<td>Đọc/tìm người dùng để chọn người tham dự</td>
+<td>Dữ liệu tài khoản được seed; CRUD đầy đủ để sau</td>
+</tr>
+<tr>
+<td>Người dùng &amp; quyền hạn</td>
+<td>Phân quyền Admin/Organizer/Participant</td>
+<td>Dùng ROLE đã có sẵn trong ERD</td>
+</tr>
+</tbody>
+</table>
+<h3>1.2 Để dành cho giai đoạn sau (không làm ở V1)</h3>
+<ul>
+<li>Đặt lịch định kỳ (recurring), gợi ý thời gian rảnh, xem lịch sử.</li>
+<li>Quản lý thiết bị (đặt kèm thiết bị, trạng thái thiết bị).</li>
+<li>Giới hạn quyền đặt phòng theo role (<code>ROOM_RESTRICTION</code>).</li>
+<li>Đồng bộ Google Calendar/Outlook, ứng dụng di động.</li>
+<li>Thống kê &amp; báo cáo, xuất Excel/PDF.</li>
+<li>Chatbot đặt phòng, check-in QR, tích hợp HRM/ERP.</li>
+</ul>
+<hr>
+<h2>2. Luồng nghiệp vụ Tạo / Sửa / Hủy cuộc họp</h2>
+<h3>2.1 Tạo cuộc họp</h3>
+<pre class="mermaid">flowchart TD
+    A[Người dùng gửi form: tiêu đề, thời gian, phòng, người tham dự] --&gt; B{Xác thực &amp; quyền hợp lệ?}
+    B -- Không --&gt; B1[401/403]
+    B -- Có --&gt; C{Validate dữ liệu: field bắt buộc, end_time &gt; start_time, start_time &gt;= hiện tại}
+    C -- Sai --&gt; C1[400 VALIDATION_ERROR]
+    C -- Đúng --&gt; D[Resolve participants: user_id hoặc email -&gt; USER hợp lệ]
+    D -- Không tìm thấy user --&gt; D1[404 USER_NOT_FOUND]
+    D -- Hợp lệ --&gt; E[Kiểm tra xung đột phòng và toàn bộ người tham dự]
+    E -- Không trùng --&gt; G[Transaction: lưu meeting, participants, attachments metadata và reminder jobs]
+    E -- Có trùng --&gt; F[409 SCHEDULE_CONFLICT + chi tiết + tối đa 3 khung giờ gợi ý]
+    F -- Chọn giờ gợi ý --&gt; E
+    F -- Xác nhận tạo dù trùng --&gt; H{Request lại allow_conflicts=true; kiểm tra lại}
+    H -- Lỗi dữ liệu/quyền --&gt; C1
+    H -- Hợp lệ sau kiểm tra lại --&gt; G
+    G --&gt; J[201 Created, trả dữ liệu cuộc họp]
+    G --&gt; I[Gửi email mời kèm ICS + RSVP token sau commit]
+    I -- Thành công --&gt; K[Ghi notification Sent]
+    I -- Thất bại --&gt; L[Ghi Failed; cuộc họp vẫn được tạo]
+    G --&gt; R[Worker gửi reminder email tại start_time - 15 phút]
+</pre>
+<h3>2.2 Sửa cuộc họp</h3>
+<ul>
+<li>Chỉ <strong>organizer</strong> của cuộc họp hoặc <strong>Admin</strong> được sửa.</li>
+<li>Nếu đổi <code>start_time</code>/<code>end_time</code>/<code>room_id</code>: chạy lại toàn bộ bước kiểm tra trùng phòng và trùng lịch người tham dự (trừ chính cuộc họp đang sửa).</li>
+<li>Nếu đổi danh sách người tham dự: người mới thêm → trạng thái &quot;Pending&quot; + gửi mail mời; người bị xóa → không gửi mail hủy riêng cho họ (tùy chọn, có thể bổ sung sau).</li>
+<li>Bất kỳ thay đổi nào về giờ/phòng/link họp → gửi <strong>email cập nhật</strong> cho toàn bộ người tham dự hiện tại.</li>
+<li>Không cho sửa cuộc họp đã ở trạng thái <code>Completed</code> hoặc <code>Cancelled</code> → trả <code>409 INVALID_STATE</code>.</li>
+</ul>
+<h3>2.3 Hủy cuộc họp</h3>
+<ul>
+<li>Chỉ <strong>organizer</strong> hoặc <strong>Admin</strong> được hủy.</li>
+<li>Hủy là <strong>soft-delete</strong>: set <code>status = Cancelled</code>, <code>cancelled_at = now()</code>, không xóa bản ghi.</li>
+<li>Sau khi hủy: giải phóng phòng (phòng hết bị coi là trùng lịch trong khung giờ đó), gửi email thông báo hủy cho toàn bộ người tham dự.</li>
+<li>Không cho hủy cuộc họp đã <code>Completed</code> → <code>409 INVALID_STATE</code>.</li>
+</ul>
+<h3>2.4 Quy tắc xử lý lỗi chung</h3>
+<table>
+<thead>
+<tr>
+<th>Tình huống</th>
+<th>Xử lý</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trùng lịch/phòng</td>
+<td>Trả 409 kèm conflict và tối đa 3 gợi ý. Chỉ tạo sau request xác nhận <code>allow_conflicts=true</code>; kết quả lưu có warning xung đột.</td>
+</tr>
+<tr>
+<td>Gửi email thất bại</td>
+<td>Cuộc họp/thay đổi <strong>vẫn được lưu</strong>; ghi trạng thái thất bại và trả kết quả nghiệp vụ thành công kèm cảnh báo. Reminder dùng worker đọc job đến hạn trong DB; gửi lại tự động khi lỗi chưa nằm trong V1.</td>
+</tr>
+<tr>
+<td>Lỗi hệ thống khi đang lưu</td>
+<td>Rollback toàn bộ transaction (MEETING + MEETING_PARTICIPANT), trả 500</td>
+</tr>
+<tr>
+<td>Participant email không map được user</td>
+<td>Từ chối cả request (404 USER_NOT_FOUND), không tạo họp thiếu người</td>
+</tr>
+<tr>
+<td>Participant rỗng hoặc trùng lặp</td>
+<td>Yêu cầu ít nhất một người được mời ngoài organizer; loại organizer khỏi danh sách đầu vào nếu bị lặp, chuẩn hóa participant theo user_id duy nhất</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>3. Kiến trúc module Backend &amp; chuẩn response/error</h2>
+<h3>3.1 Các lớp</h3>
+<h4>Stack V1 đã chốt</h4>
+<ul>
+<li><strong>Runtime/ngôn ngữ:</strong> Node.js 22 LTS + TypeScript.</li>
+<li><strong>HTTP:</strong> Express; <strong>database:</strong> PostgreSQL; <strong>ORM/migration:</strong> Prisma.</li>
+<li><strong>Validation:</strong> Zod; <strong>kiểm thử đơn vị:</strong> Vitest; đặc tả API: OpenAPI 3.1.</li>
+<li><strong>Xác thực:</strong> email + mật khẩu; lưu mật khẩu dạng bcrypt hash, không lưu mật khẩu gốc. API trả JWT access token hết hạn sau 30 phút; gửi token qua <code>Authorization: Bearer</code>. Chưa triển khai refresh token ở V1; người dùng đăng nhập lại khi token hết hạn.</li>
+<li><strong>Phân quyền:</strong> middleware xác thực token rồi kiểm tra role và quyền sở hữu/tư cách participant ở tầng service. Mọi endpoint dùng HTTPS khi triển khai; secret JWT chỉ lấy từ biến môi trường.</li>
+<li><strong>Quyết định phạm vi:</strong> tài khoản V1 được Admin/seed tạo trước; login dùng tài khoản có sẵn. Chưa có đăng ký công khai, quên mật khẩu hoặc xác minh email.</li>
+<li><strong>File:</strong> chỉ PDF/DOCX/XLSX/PPTX, tối đa 10 MB mỗi file và 5 file/cuộc họp; dùng local storage trong development qua interface để thay bằng object storage khi deploy.</li>
+<li><strong>Reminder:</strong> email nhắc bắt buộc trước 15 phút; người tạo không đổi/tắt được trong V1. Worker polling PostgreSQL mỗi phút gửi các reminder đến hạn.</li>
+</ul>
+<pre><code>Controller (HTTP)  →  Service (business rule)  →  Repository (data access)
+        ↓                      ↓
+  Validation/Auth       Notification Provider (interface, impl SMTP/…)
+        ↓
+   Error Handler (map exception → response chuẩn)
+</code></pre>
+<ul>
+<li><strong>Controller/API</strong>: chỉ parse request, gọi Service, format response. Không chứa logic nghiệp vụ.</li>
+<li><strong>Service</strong>: kiểm tra trùng lịch/phòng, điều phối transaction, gọi Notification Provider (qua interface, không phụ thuộc cụ thể vào SMTP hay bên thứ ba).</li>
+<li><strong>Repository</strong>: truy vấn DB, không chứa quy tắc nghiệp vụ.</li>
+<li><strong>Notification Provider</strong>: interface <code>sendMeetingInvite</code>, <code>sendMeetingUpdate</code>, <code>sendMeetingCancellation</code>; implementation có thể đổi (SMTP, SendGrid, SES…) mà không sửa Service.</li>
+<li><strong>Validation/Auth</strong>: middleware kiểm tra schema request, xác thực JWT Bearer và phân quyền theo role.</li>
+<li><strong>Reminder Worker</strong>: mỗi phút lấy reminder Pending đã đến hạn bằng cơ chế claim an toàn, gửi email qua provider và cập nhật trạng thái; lỗi được ghi Failed, không rollback cuộc họp.</li>
+<li><strong>Attachment Storage</strong>: interface lưu/đọc/xóa file; local adapter cho development, adapter object storage khi deploy.</li>
+<li><strong>Cross-cutting</strong>: Config (theo biến môi trường, tách dev/staging/prod, không hardcode secret), Logging (structured log, kèm <code>request_id</code>, log INFO cho hành động tạo/sửa/hủy, log ERROR kèm stack trace nội bộ — không trả stack trace ra client).</li>
+</ul>
+<h3>3.2 Chuẩn response</h3>
+<p><strong>Thành công:</strong></p>
+<pre><code class="language-json">{
+  &#34;success&#34;: true,
+  &#34;data&#34;: { },
+  &#34;meta&#34;: { &#34;timestamp&#34;: &#34;2026-09-26T10:00:00Z&#34;, &#34;requestId&#34;: &#34;...&#34; }
+}
+</code></pre>
+<p><strong>Lỗi:</strong></p>
+<pre><code class="language-json">{
+  &#34;success&#34;: false,
+  &#34;error&#34;: {
+    &#34;code&#34;: &#34;SCHEDULE_CONFLICT&#34;,
+    &#34;message&#34;: &#34;Phòng đã được đặt trong khung giờ này&#34;,
+    &#34;details&#34;: [{ &#34;field&#34;: &#34;title&#34;, &#34;code&#34;: &#34;REQUIRED&#34;, &#34;message&#34;: &#34;Vui lòng nhập tên cuộc họp&#34; }]
+  },
+  &#34;meta&#34;: { &#34;timestamp&#34;: &#34;...&#34;, &#34;requestId&#34;: &#34;...&#34; }
+}
+</code></pre>
+<h3>3.3 Mã lỗi chuẩn</h3>
+<table>
+<thead>
+<tr>
+<th>HTTP</th>
+<th>code</th>
+<th>Ý nghĩa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>400</td>
+<td>VALIDATION_ERROR</td>
+<td>Thiếu field / sai định dạng / end_time &lt;= start_time</td>
+</tr>
+<tr>
+<td>401</td>
+<td>UNAUTHORIZED</td>
+<td>Chưa đăng nhập</td>
+</tr>
+<tr>
+<td>403</td>
+<td>FORBIDDEN</td>
+<td>Không đủ quyền (không phải organizer/Admin)</td>
+</tr>
+<tr>
+<td>404</td>
+<td>MEETING_NOT_FOUND / ROOM_NOT_FOUND / USER_NOT_FOUND</td>
+<td>Không tìm thấy tài nguyên</td>
+</tr>
+<tr>
+<td>409</td>
+<td>SCHEDULE_CONFLICT / INVALID_STATE</td>
+<td>Xung đột nghiệp vụ</td>
+</tr>
+<tr>
+<td>500</td>
+<td>INTERNAL_ERROR</td>
+<td>Lỗi hệ thống</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Quy ước:</strong> email người tham dự sai định dạng trả <code>400 VALIDATION_ERROR</code>; email đúng định dạng nhưng không ánh xạ được tài khoản nội bộ trả <code>404 USER_NOT_FOUND</code>. Không dùng mã <code>400/404</code> thay thế tùy trường hợp.</p>
+<hr>
+<h2>4. Hợp đồng API cho luồng lịch họp</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Mô tả</th>
+<th>Quyền</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/meetings</code></td>
+<td>Tạo cuộc họp</td>
+<td>Organizer, Admin</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/meetings?from=&amp;to=&amp;room_id=</code></td>
+<td>Xem lịch theo khoảng thời gian; participant/organizer chỉ thấy cuộc họp liên quan đến mình</td>
+<td>Đã đăng nhập</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/meetings/{id}</code></td>
+<td>Xem chi tiết</td>
+<td>Organizer/participant/Admin</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/meetings/{id}</code></td>
+<td>Cập nhật</td>
+<td>Organizer sở hữu hoặc Admin</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/meetings/{id}</code></td>
+<td>Hủy (soft-cancel)</td>
+<td>Organizer sở hữu hoặc Admin</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/meetings/{id}/rsvp</code></td>
+<td>Người được mời phản hồi Accepted/Declined/Tentative</td>
+<td>Participant của cuộc họp</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/rsvp/respond</code></td>
+<td>Phản hồi từ link email bằng RSVP token</td>
+<td>Token participant; không cần đăng nhập</td>
+</tr>
+<tr>
+<td>GET / DELETE</td>
+<td><code>/meetings/{id}/attachments/{attachmentId}</code></td>
+<td>Tải xuống/xóa tệp đính kèm</td>
+<td>Organizer/Admin; participant được tải xuống</td>
+</tr>
+</tbody>
+</table>
+<h3>Chi tiết <code>POST /meetings</code></h3>
+<p><strong>Request:</strong> <code>multipart/form-data</code>, gồm trường <code>meeting</code> là JSON metadata và 0–5 file trong <code>attachments</code>; mỗi file tối đa 10 MB, định dạng PDF/DOCX/XLSX/PPTX.</p>
+<pre><code class="language-json">{
+  &#34;meeting&#34;: {
+  &#34;title&#34;: &#34;string, required, tối đa 200 ký tự&#34;,
+  &#34;description&#34;: &#34;string, optional&#34;,
+  &#34;start_time&#34;: &#34;ISO8601, required&#34;,
+  &#34;end_time&#34;: &#34;ISO8601, required, &gt; start_time&#34;,
+  &#34;room_id&#34;: &#34;int, optional&#34;,
+  &#34;meeting_link&#34;: &#34;string, optional&#34;,
+  &#34;participants&#34;: [{ &#34;user_id&#34;: 12 }, { &#34;email&#34;: &#34;a@b.com&#34; }],
+  &#34;allow_conflicts&#34;: false
+  },
+  &#34;attachments&#34;: [&#34;binary file parts; optional&#34;]
+}
+</code></pre>
+<p>Người tham dự bắt buộc ≥ 1 người khác organizer; chỉ user nội bộ Active được mời. Organizer tự thêm Accepted và bị lặp thì loại trùng. Phòng và link họp đều optional theo AC1; nếu có thì chọn riêng hoặc đồng thời. Thời gian gửi/nhận dùng ISO 8601 có offset; lưu UTC. Reminder email mặc định trước 15 phút.</p>
+<p><strong>Response 201:</strong></p>
+<pre><code class="language-json">{
+  &#34;success&#34;: true,
+  &#34;data&#34;: {
+    &#34;meeting_id&#34;: 101,
+    &#34;title&#34;: &#34;...&#34;,
+    &#34;start_time&#34;: &#34;...&#34;,
+    &#34;end_time&#34;: &#34;...&#34;,
+    &#34;room&#34;: { &#34;room_id&#34;: 3, &#34;room_name&#34;: &#34;...&#34; },
+    &#34;organizer&#34;: { &#34;user_id&#34;: 5, &#34;full_name&#34;: &#34;...&#34; },
+    &#34;participants&#34;: [{ &#34;user_id&#34;: 12, &#34;status&#34;: &#34;Pending&#34; }],
+    &#34;status&#34;: &#34;Scheduled&#34;,
+    &#34;created_at&#34;: &#34;...&#34;
+  }
+}
+</code></pre>
+<p><strong>Lỗi có thể trả về:</strong> <code>400 VALIDATION_ERROR</code> với <code>details</code> theo field gồm <code>field</code>, <code>code</code>, <code>message</code>; <code>404 USER_NOT_FOUND</code>/<code>ROOM_NOT_FOUND</code>; <code>409 SCHEDULE_CONFLICT</code> kèm người/phòng xung đột, tối đa 3 <code>suggested_times</code> và <code>override_allowed</code>. Thông báo UI: “Người dùng [Tên] / Phòng họp [Tên phòng] đã có lịch họp khác trong khoảng thời gian này”. Khi người dùng xác nhận “Tạo dù trùng”, gửi lại cùng nội dung với <code>allow_conflicts: true</code>; API vẫn kiểm tra lại xung đột và trả 201 cùng warning nếu tạo thành công.</p>
+<p>Nếu lưu cuộc họp thành công nhưng email gửi thất bại, vẫn trả <code>201</code> với <code>data</code> của cuộc họp và <code>meta.warnings</code> chứa cảnh báo <code>INVITATION_EMAIL_FAILED</code>; lỗi provider không biến thao tác tạo cuộc họp thành thất bại.</p>
+<p><code>PUT /meetings/{id}</code> dùng cùng schema request (các field optional, chỉ gửi field cần đổi) và chạy lại toàn bộ kiểm tra xung đột ở mục 2.2. <code>DELETE /meetings/{id}</code> không cần body, trả <code>200</code> với <code>status: &quot;Cancelled&quot;</code>.</p>
+<p><code>GET /meetings</code> yêu cầu <code>from</code> và <code>to</code>; giới hạn tối đa 31 ngày mỗi lần gọi. Backend tự áp dụng phạm vi dữ liệu theo người dùng đăng nhập, không cho client truyền user_id để xem lịch người khác. Admin có thể xem toàn hệ thống.</p>
+<p><code>PATCH /meetings/{id}/rsvp</code> nhận <code>{ &quot;status&quot;: &quot;Accepted|Declined|Tentative&quot; }</code>; chỉ participant hiện hữu được đổi trạng thái của chính mình. Organizer không thể bị đổi khỏi Accepted qua endpoint này.</p>
+<p><code>POST /rsvp/respond</code> nhận <code>{ &quot;token&quot;: &quot;...&quot;, &quot;status&quot;: &quot;Accepted|Declined|Tentative&quot; }</code>; token ngẫu nhiên riêng mỗi người được mời (không cấp cho organizer), chỉ hash được lưu trong DB, hết hạn tại thời điểm kết thúc cuộc họp. Link RSVP không yêu cầu đăng nhập và chỉ đổi phản hồi của participant gắn với token đó.</p>
+<p>Gợi ý giờ: giữ nguyên thời lượng; trong cùng ngày theo múi giờ Asia/Ho_Chi_Minh, sau giờ bắt đầu người dùng chọn, trong khoảng 08:00–18:00; thử các slot cách nhau 15 phút và trả tối đa 3 slot trống cho cả phòng lẫn toàn bộ participant.</p>
+<hr>
+<h2>5. Quy tắc: Xung đột lịch — Quyền — Thông báo</h2>
+<h3>5.1 Xung đột lịch</h3>
+<ul>
+<li>Hai khoảng thời gian được coi là <strong>trùng</strong> khi: <code>startA &lt; endB AND endA &gt; startB</code>.</li>
+<li>Áp dụng kiểm tra trùng cho: (a) phòng họp (mọi meeting <code>Scheduled</code>/<code>In-progress</code> dùng cùng <code>room_id</code>), (b) từng người tham dự (mọi meeting mà họ có mặt, trạng thái tham gia khác <code>Declined</code>).</li>
+<li>Meeting đã <code>Cancelled</code> không tính là trùng.</li>
+<li>Meeting online (<code>room_id = null</code>) không cần kiểm tra trùng phòng, chỉ kiểm tra trùng lịch người tham dự.</li>
+<li>Mặc định xung đột trả 409; chỉ request có <code>allow_conflicts=true</code> sau xác nhận trên UI mới được phép tạo. Nếu lưu dù trùng, trả 201 với cảnh báo rõ các xung đột.</li>
+</ul>
+<h3>5.2 Phân quyền</h3>
+<ul>
+<li><strong>Admin</strong>: CRUD phòng, CRUD người dùng, sửa/hủy mọi cuộc họp.</li>
+<li><strong>Organizer</strong>: tạo cuộc họp; chỉ sửa/hủy cuộc họp do chính mình tổ chức.</li>
+<li><strong>Participant</strong>: chỉ xem cuộc họp mình được mời, không tạo/sửa/hủy.</li>
+</ul>
+<h3>5.3 Thông báo</h3>
+<ul>
+<li>Tạo mới → gửi mail mời tất cả participant (trạng thái ban đầu <code>Pending</code>, riêng organizer <code>Accepted</code>).</li>
+<li>Sửa giờ/phòng/link → gửi mail cập nhật cho toàn bộ participant hiện tại.</li>
+<li>Hủy → gửi mail thông báo hủy cho toàn bộ participant.</li>
+<li>V1 gửi email mời kèm file <code>.ics</code> và RSVP token sau commit; gửi thất bại → ghi <code>NOTIFICATION_LOG</code>, cuộc họp vẫn tồn tại và API trả cảnh báo.</li>
+<li>Reminder email được lên lịch cho từng participant tại <code>start_time - 15 phút</code>; worker polling bảng <code>MEETING_REMINDER</code> mỗi phút xử lý job Pending đến hạn. Lỗi gửi được ghi Failed, V1 chưa tự retry.</li>
+<li>Hủy/sửa thời gian họp phải đánh dấu các reminder cũ Cancelled và tạo lại reminder khi cần; không gửi reminder cho meeting Cancelled.</li>
+</ul>
+<hr>
+<h2>6. Danh sách thay đổi cần thiết so với ERD hiện tại</h2>
+<p>ERD hiện có: <code>DEPARTMENT, ROLE, USER, ROOM, ROOM_RESTRICTION, EQUIPMENT, MEETING, MEETING_PARTICIPANT, MEETING_EQUIPMENT, CHECK_IN_LOG</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Bảng</th>
+<th>Thay đổi</th>
+<th>Loại</th>
+<th>Lý do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MEETING_PARTICIPANT</code></td>
+<td>Thêm giá trị <code>Tentative</code> vào <code>status</code> (hiện chỉ có Pending/Accepted/Declined)</td>
+<td>Sửa enum</td>
+<td>Khớp Acceptance Criteria yêu cầu trạng thái &quot;phân vân&quot;</td>
+</tr>
+<tr>
+<td><code>USER</code></td>
+<td>Thêm <code>password_hash</code> (nullable với tài khoản chưa kích hoạt đăng nhập)</td>
+<td>Thêm cột</td>
+<td>Đăng nhập nội bộ bằng email/mật khẩu; không lưu mật khẩu thô</td>
+</tr>
+<tr>
+<td><code>MEETING</code></td>
+<td>Thêm cột <code>meeting_link</code> (string, nullable)</td>
+<td>Thêm cột</td>
+<td>Hỗ trợ họp online</td>
+</tr>
+<tr>
+<td><code>MEETING</code></td>
+<td>Cho phép <code>room_id</code> NULL</td>
+<td>Sửa ràng buộc</td>
+<td>Họp online không bắt buộc phòng vật lý</td>
+</tr>
+<tr>
+<td><code>MEETING</code></td>
+<td>Thêm <code>created_at</code>, <code>updated_at</code>, <code>cancelled_at</code> (datetime)</td>
+<td>Thêm cột</td>
+<td>Audit trail, cần cho luồng sửa/hủy ở mục 2</td>
+</tr>
+<tr>
+<td><code>MEETING</code></td>
+<td>Quy ước lưu <code>start_time</code>/<code>end_time</code> theo UTC</td>
+<td>Quy ước, không đổi cột</td>
+<td>Xử lý timezone ở tầng ứng dụng thay vì thêm cột</td>
+</tr>
+<tr>
+<td><em>(mới)</em> <code>NOTIFICATION_LOG</code></td>
+<td><code>log_id PK, meeting_id FK, recipient_user_id FK, channel, status (Sent/Failed), sent_at, error_message</code></td>
+<td>Bảng mới</td>
+<td>Ghi kết quả gửi email mời/cập nhật/hủy/reminder; reminder queue có trạng thái Pending/Sent/Failed/Cancelled</td>
+</tr>
+<tr>
+<td><em>(mới)</em> <code>MEETING_ATTACHMENT</code></td>
+<td><code>attachment_id PK, meeting_id FK, uploaded_by FK, file_name, mime_type, size_bytes, storage_key, created_at</code></td>
+<td>Bảng mới</td>
+<td>File local trong dev qua storage interface; allowlist MIME và giới hạn số lượng/dung lượng</td>
+</tr>
+<tr>
+<td><code>MEETING</code> + <em>(mới)</em> <code>MEETING_REMINDER</code></td>
+<td><code>reminder_minutes_before int DEFAULT 15</code>; reminder gồm meeting/user/scheduled_at/status/sent_at/error_message</td>
+<td>Thêm cột/bảng</td>
+<td>Worker polling DB mỗi phút; reminder mặc định 15 phút, tự hủy/tạo lại khi đổi giờ/hủy meeting</td>
+</tr>
+<tr>
+<td><code>MEETING_PARTICIPANT</code></td>
+<td>Thêm <code>rsvp_token_hash</code> và <code>rsvp_token_expires_at</code></td>
+<td>Thêm cột</td>
+<td>Link RSVP email riêng từng người; chỉ lưu hash, hết hạn lúc họp kết thúc</td>
+</tr>
+<tr>
+<td><code>DEPARTMENT</code>, <code>ROOM_RESTRICTION</code>, <code>EQUIPMENT</code>, <code>CHECK_IN_LOG</code></td>
+<td>—</td>
+<td>Giữ nguyên, chưa dùng</td>
+<td>Thuộc tính năng ngoài phạm vi V1 (giới hạn phòng theo role, thiết bị, check-in QR)</td>
+</tr>
+<tr>
+<td><code>MEETING.is_recurring</code>, <code>recurrence_rule</code></td>
+<td>—</td>
+<td>Giữ nguyên, chưa dùng</td>
+<td>Đặt lịch định kỳ để giai đoạn sau, không cần xóa cột đã có sẵn</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Bước tiếp theo đề xuất</h2>
+<ol>
+<li>Stack đã chốt cho MVP: Node.js 22 LTS, TypeScript, Express, PostgreSQL, Prisma; xác thực JWT Bearer 30 phút theo mục 3.1.</li>
+<li>Thiết kế MVP, các quyết định Q1–Q10, ERD V2 và OpenAPI đã được đồng bộ; kịch bản nghiệm thu ở <code>docs/requirements/ACCEPTANCE_TEST_CASES.md</code>.</li>
+<li>Bắt đầu code từ dựng khung Node.js/TypeScript/Express, cấu hình môi trường, logging, error handler và health check.</li>
+<li>Tạo Prisma schema/migration/seed theo ERD V2, sau đó làm đăng nhập JWT và API tra cứu user/phòng.</li>
+<li>Triển khai luồng tạo họp: multipart upload, conflict suggestions/explicit override, lưu transaction, email ICS/RSVP và worker reminder T-15; tiếp theo hoàn thiện xem/sửa/hủy/RSVP.</li>
+</ol>
+
+
+<!--claude-mermaid-runtime-begin:3477-->
+<style>.mermaid-diagram{margin-block:4px}.mermaid-diagram svg{display:block;margin:0 auto;max-width:100%;height:auto}</style>
+<script src="/_runtime/mermaid-11.16.1.min.js"></script>
+<script>(function(){
+var CFG={"palettes":{"light":{"surface":"#f4efe4","text":"#42392e","line":"#8a7f6d","border":"#7a6c52","bg":"#fffdf8"},"dark":{"surface":"#262b34","text":"#f2f3f5","line":"#a8adb8","border":"#9aa4b8","bg":"#1f232b"}}};
+if(typeof mermaid==='undefined')return;
+var pres=Array.prototype.slice.call(document.querySelectorAll('pre.mermaid')).filter(function(p){if(p.hasAttribute('data-claude-mermaid-claimed'))return false;p.setAttribute('data-claude-mermaid-claimed','1');return true;});
+if(!pres.length)return;
+var mq=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+var root=document.documentElement;
+var items=pres.map(function(pre){
+var mount=document.createElement('div');mount.className='mermaid-diagram';
+return {pre:pre,mount:mount,src:pre.textContent||''};
+});
+var seq=0;
+var renderGen=0;
+var lastKey='';
+function pageBg(fallback){
+var els=[document.body,document.documentElement];
+for(var i=0;i<els.length;i++){
+var c=els[i]&&getComputedStyle(els[i]).backgroundColor;
+if(c&&c!=='transparent'&&c!=='rgba(0, 0, 0, 0)')return c;
+}
+return fallback;
+}
+function render(){
+var theme=root.getAttribute('data-theme');
+var dark=theme==='dark'||(!!(mq&&mq.matches)&&theme!=='light');
+var pal=dark?CFG.palettes.dark:CFG.palettes.light;
+var bg=pageBg(pal.bg);
+var key=(dark?'d':'l')+'|'+bg;
+if(key===lastKey)return;
+lastKey=key;
+var gen=++renderGen;
+var font=getComputedStyle(document.body).fontFamily||'sans-serif';
+var nat={useMaxWidth:false};
+mermaid.initialize({
+startOnLoad:false,securityLevel:'strict',theme:'base',
+flowchart:nat,sequence:nat,er:nat,state:nat,class:nat,pie:nat,
+gantt:nat,journey:nat,timeline:nat,gitGraph:nat,mindmap:nat,xyChart:nat,
+quadrantChart:nat,sankey:nat,c4:nat,requirement:nat,block:nat,
+packet:nat,kanban:nat,architecture:nat,radar:nat,
+themeVariables:{background:bg,mainBkg:pal.surface,primaryColor:pal.surface,
+primaryTextColor:pal.text,lineColor:pal.line,primaryBorderColor:pal.border,
+nodeBorder:pal.border,clusterBorder:pal.border,edgeLabelBackground:bg,
+clusterBkg:'rgba(127,127,127,0.07)',titleColor:pal.text,
+darkMode:dark,rowOdd:bg,rowEven:'rgba(127,127,127,0.07)',
+attributeBackgroundColorOdd:bg,attributeBackgroundColorEven:'rgba(127,127,127,0.07)',
+fontSize:'16px',fontFamily:font},
+themeCSS:'.node rect, .node circle, .node polygon, .node path, .cluster rect { stroke-width: 2px; }'
+});
+items.forEach(function(it){
+var id='claude-mermaid-'+seq++;
+mermaid.render(id,it.src).then(function(r){
+if(gen!==renderGen)return;
+var prev=it.pre.previousElementSibling;
+if(prev&&prev.className==='mermaid-diagram'&&prev!==it.mount)return;
+it.mount.innerHTML=r.svg;
+if(!it.mount.parentNode)it.pre.parentNode.insertBefore(it.mount,it.pre);
+it.pre.style.display='none';
+},function(){
+var scratch=document.getElementById(id);
+if(scratch)scratch.parentNode.removeChild(scratch);
+scratch=document.getElementById('d'+id);
+if(scratch)scratch.parentNode.removeChild(scratch);
+if(gen!==renderGen)return;
+if(it.mount.parentNode)it.mount.parentNode.removeChild(it.mount);
+it.pre.style.display='';
+});
+});
+}
+render();
+if(mq&&mq.addEventListener)mq.addEventListener('change',render);
+if(typeof MutationObserver!=='undefined')new MutationObserver(render).observe(root,{attributes:true,attributeFilter:['data-theme']});
+})();</script>
+<!--claude-mermaid-runtime-end-->
+</body></html>

@@ -1,0 +1,740 @@
+{
+  "summary": {
+    "total": 81,
+    "pass": 81,
+    "fail": 0,
+    "pass_rate": 100.0,
+    "timestamp": "2026-10-17T14:38:26.443010"
+  },
+  "results": [
+    {
+      "id": "T-A01",
+      "category": "Auth",
+      "description": "GET /health -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-A02",
+      "category": "Auth",
+      "description": "Admin login -> 200+token",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-A02b",
+      "category": "Auth",
+      "description": "role==ADMIN",
+      "status": "PASS",
+      "expected": "ADMIN",
+      "actual": "ADMIN",
+      "note": ""
+    },
+    {
+      "id": "T-A03",
+      "category": "Auth",
+      "description": "Organizer login -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-A04",
+      "category": "Auth",
+      "description": "Participant login -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-A05",
+      "category": "Auth",
+      "description": "Wrong password -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-A06",
+      "category": "Auth",
+      "description": "Unknown email -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-A07",
+      "category": "Auth",
+      "description": "GET /auth/me valid token -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-A07b",
+      "category": "Auth",
+      "description": "auth/me does NOT expose password_hash",
+      "status": "PASS",
+      "expected": "no password_hash",
+      "actual": "dict_keys(['user_id', 'email', 'full_name', 'phone', 'avatar_url', 'status', 'role_id', 'department_id', 'created_at', 'updated_at', 'role', 'department'])",
+      "note": ""
+    },
+    {
+      "id": "T-A08",
+      "category": "Auth",
+      "description": "GET /auth/me no token -> 401",
+      "status": "PASS",
+      "expected": "401",
+      "actual": "401",
+      "note": ""
+    },
+    {
+      "id": "T-A09",
+      "category": "Auth",
+      "description": "GET /auth/me fake token -> 401",
+      "status": "PASS",
+      "expected": "401",
+      "actual": "401",
+      "note": ""
+    },
+    {
+      "id": "T-A10",
+      "category": "Auth",
+      "description": "change-password correct old -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-A10b",
+      "category": "Auth",
+      "description": "Rollback admin password",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-A11",
+      "category": "Auth",
+      "description": "change-password wrong old -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-A12",
+      "category": "Auth",
+      "description": "POST /auth/logout -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-R01",
+      "category": "Rooms",
+      "description": "GET /rooms Organizer -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-R01b",
+      "category": "Rooms",
+      "description": ">=5 rooms seeded",
+      "status": "PASS",
+      "expected": ">=5",
+      "actual": "6",
+      "note": ""
+    },
+    {
+      "id": "T-R02",
+      "category": "Rooms",
+      "description": "min_capacity=30 filter",
+      "status": "PASS",
+      "expected": "True",
+      "actual": "all>=30:True",
+      "note": ""
+    },
+    {
+      "id": "T-R03",
+      "category": "Rooms",
+      "description": "status=AVAILABLE filter",
+      "status": "PASS",
+      "expected": "True",
+      "actual": "all_avail:True",
+      "note": ""
+    },
+    {
+      "id": "T-R04",
+      "category": "Rooms",
+      "description": "GET /rooms/1 -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-R05",
+      "category": "Rooms",
+      "description": "POST /rooms Admin -> 201",
+      "status": "PASS",
+      "expected": "201",
+      "actual": "201",
+      "note": ""
+    },
+    {
+      "id": "T-R06",
+      "category": "Rooms",
+      "description": "POST /rooms dup name -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-R07",
+      "category": "Rooms",
+      "description": "POST /rooms Organizer -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-R08",
+      "category": "Rooms",
+      "description": "PUT /rooms/7 Admin -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-R09",
+      "category": "Rooms",
+      "description": "GET /rooms/999999 -> 404",
+      "status": "PASS",
+      "expected": "404",
+      "actual": "404",
+      "note": ""
+    },
+    {
+      "id": "T-R10",
+      "category": "Rooms",
+      "description": "DELETE /rooms/7 Admin -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-M01",
+      "category": "Meetings",
+      "description": "POST /meetings Participant -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-M02",
+      "category": "Meetings",
+      "description": "POST /meetings Organizer -> 201",
+      "status": "PASS",
+      "expected": "201",
+      "actual": "201",
+      "note": ""
+    },
+    {
+      "id": "T-M02b",
+      "category": "Meetings",
+      "description": "Organizer meeting status=PENDING",
+      "status": "PASS",
+      "expected": "PENDING",
+      "actual": "PENDING",
+      "note": ""
+    },
+    {
+      "id": "T-M03",
+      "category": "Meetings",
+      "description": "POST /meetings Admin -> 201",
+      "status": "PASS",
+      "expected": "201",
+      "actual": "201",
+      "note": ""
+    },
+    {
+      "id": "T-M03b",
+      "category": "Meetings",
+      "description": "Admin meeting status=SCHEDULED",
+      "status": "PASS",
+      "expected": "SCHEDULED",
+      "actual": "SCHEDULED",
+      "note": ""
+    },
+    {
+      "id": "T-M04",
+      "category": "Meetings",
+      "description": "end_time < start_time -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-M05",
+      "category": "Meetings",
+      "description": "room_id nonexistent -> 404",
+      "status": "PASS",
+      "expected": "404",
+      "actual": "404",
+      "note": ""
+    },
+    {
+      "id": "T-M06",
+      "category": "Meetings",
+      "description": "Room conflict detection -> 409",
+      "status": "PASS",
+      "expected": "409",
+      "actual": "409",
+      "note": "Must detect PENDING room conflict"
+    },
+    {
+      "id": "T-M07",
+      "category": "Meetings",
+      "description": "GET /meetings Organizer -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-M08",
+      "category": "Meetings",
+      "description": "GET /meetings/1 -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-M09",
+      "category": "Meetings",
+      "description": "GET /meetings/999999 -> 404",
+      "status": "PASS",
+      "expected": "404",
+      "actual": "404",
+      "note": ""
+    },
+    {
+      "id": "T-M10",
+      "category": "Meetings",
+      "description": "approve Admin -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-M11",
+      "category": "Meetings",
+      "description": "approve Organizer -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-M12",
+      "category": "Meetings",
+      "description": "respond ACCEPTED Participant -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-M13",
+      "category": "Meetings",
+      "description": "respond INVALID status -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-M14",
+      "category": "Meetings",
+      "description": "PUT meeting Organizer -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-M15",
+      "category": "Meetings",
+      "description": "PUT meeting Participant -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-M16",
+      "category": "Meetings",
+      "description": "cancel Organizer -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-M17",
+      "category": "Meetings",
+      "description": "cancel Participant -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-M18",
+      "category": "Meetings",
+      "description": "Book MAINTENANCE room -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-E01",
+      "category": "Equipment",
+      "description": "GET /equipments Organizer -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-E01b",
+      "category": "Equipment",
+      "description": ">=10 equipments seeded",
+      "status": "PASS",
+      "expected": ">=10",
+      "actual": "11",
+      "note": ""
+    },
+    {
+      "id": "T-E02",
+      "category": "Equipment",
+      "description": "PROJECTOR filter",
+      "status": "PASS",
+      "expected": "True",
+      "actual": "all_prj:True",
+      "note": ""
+    },
+    {
+      "id": "T-E03",
+      "category": "Equipment",
+      "description": "portable filter",
+      "status": "PASS",
+      "expected": "True",
+      "actual": "all_port:True",
+      "note": ""
+    },
+    {
+      "id": "T-E04",
+      "category": "Equipment",
+      "description": "GET stats/summary -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-E04b",
+      "category": "Equipment",
+      "description": "stats.total > 0",
+      "status": "PASS",
+      "expected": ">0",
+      "actual": "11",
+      "note": ""
+    },
+    {
+      "id": "T-E05",
+      "category": "Equipment",
+      "description": "POST /equipments Admin -> 201",
+      "status": "PASS",
+      "expected": "201",
+      "actual": "201",
+      "note": ""
+    },
+    {
+      "id": "T-E06",
+      "category": "Equipment",
+      "description": "dup serial -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-E07",
+      "category": "Equipment",
+      "description": "POST /equipments Organizer -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-E08",
+      "category": "Equipment",
+      "description": "PUT equipment Admin -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-E09",
+      "category": "Equipment",
+      "description": "GET equipment detail -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-E10",
+      "category": "Equipment",
+      "description": "GET equipment nonexist -> 404",
+      "status": "PASS",
+      "expected": "404",
+      "actual": "404",
+      "note": ""
+    },
+    {
+      "id": "T-E11",
+      "category": "Equipment",
+      "description": "Book MAINTENANCE/BROKEN equipment -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-E12",
+      "category": "Equipment",
+      "description": "Book meeting with AVAILABLE equipment -> 201",
+      "status": "PASS",
+      "expected": "201",
+      "actual": "201",
+      "note": ""
+    },
+    {
+      "id": "T-E13",
+      "category": "Equipment",
+      "description": "Equipment time conflict -> 409",
+      "status": "PASS",
+      "expected": "409",
+      "actual": "409",
+      "note": "Equipment conflict detection"
+    },
+    {
+      "id": "T-E14",
+      "category": "Equipment",
+      "description": "Cancel meeting with equipment -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-E15",
+      "category": "Equipment",
+      "description": "GET equipment history -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-E16",
+      "category": "Equipment",
+      "description": "DELETE equipment Admin -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-U01",
+      "category": "Users",
+      "description": "GET /users Admin -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-U02",
+      "category": "Users",
+      "description": "GET /users Organizer -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-U03",
+      "category": "Users",
+      "description": "POST /users Admin -> 201 or 400",
+      "status": "PASS",
+      "expected": "201 or 400",
+      "actual": "201",
+      "note": ""
+    },
+    {
+      "id": "T-U04",
+      "category": "Users",
+      "description": "POST /users dup email -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-U05",
+      "category": "Users",
+      "description": "POST /users Organizer -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-U06",
+      "category": "Users",
+      "description": "GET own user Organizer -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-U07",
+      "category": "Users",
+      "description": "GET other user Organizer -> 403",
+      "status": "PASS",
+      "expected": "403",
+      "actual": "403",
+      "note": ""
+    },
+    {
+      "id": "T-U08",
+      "category": "Users",
+      "description": "DELETE user Admin -> 200 (soft)",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-U09",
+      "category": "Users",
+      "description": "search-users -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-EC01",
+      "category": "EdgeCase",
+      "description": "Missing title -> 422",
+      "status": "PASS",
+      "expected": "422",
+      "actual": "422",
+      "note": ""
+    },
+    {
+      "id": "T-EC02",
+      "category": "EdgeCase",
+      "description": "start_time==end_time -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    },
+    {
+      "id": "T-EC03",
+      "category": "EdgeCase",
+      "description": "Unknown endpoint -> 404",
+      "status": "PASS",
+      "expected": "404",
+      "actual": "404",
+      "note": ""
+    },
+    {
+      "id": "T-EC04",
+      "category": "EdgeCase",
+      "description": "health Content-Type=JSON",
+      "status": "PASS",
+      "expected": "application/json",
+      "actual": "application/json",
+      "note": ""
+    },
+    {
+      "id": "T-EC05",
+      "category": "EdgeCase",
+      "description": "GET meetings/-1 -> 404 or 422",
+      "status": "PASS",
+      "expected": "404 or 422",
+      "actual": "404",
+      "note": ""
+    },
+    {
+      "id": "T-EC06",
+      "category": "EdgeCase",
+      "description": "equipments with time filter -> 200",
+      "status": "PASS",
+      "expected": "200",
+      "actual": "200",
+      "note": ""
+    },
+    {
+      "id": "T-EC06b",
+      "category": "EdgeCase",
+      "description": "field is_available_in_slot present",
+      "status": "PASS",
+      "expected": "True",
+      "actual": "all:True",
+      "note": ""
+    },
+    {
+      "id": "T-EC07",
+      "category": "EdgeCase",
+      "description": "from_time > to_time -> 400",
+      "status": "PASS",
+      "expected": "400",
+      "actual": "400",
+      "note": ""
+    }
+  ]
+}
