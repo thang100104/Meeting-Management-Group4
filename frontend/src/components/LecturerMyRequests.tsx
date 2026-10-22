@@ -77,9 +77,11 @@ export default function LecturerMyRequests({ userProfile }: { userProfile: any }
     if (!window.confirm('Bạn có chắc chắn muốn hủy yêu cầu đặt phòng này?')) return;
     const strId = reqId.replace('REQ_', '');
     try {
-      await api.patch(`/meetings/${strId}/status`, { status: 'CANCELLED' });
-    } catch (err) {
+      await api.patch(`/meetings/${strId}/cancel`);
+    } catch (err: any) {
       console.warn('Lỗi API Hủy đơn', err);
+      alert(err.response?.data?.detail || 'Không thể hủy yêu cầu');
+      return;
     }
     // Reload requests from API to reflect cancellation
     await loadRequests();

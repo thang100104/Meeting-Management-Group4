@@ -40,6 +40,7 @@ class MeetingParticipant(Base):
     rsvp_status = Column(String(50), default="PENDING") # PENDING, ACCEPTED, DECLINED
     joined_at = Column(DateTime, nullable=True)
     checked_in_at = Column(DateTime, nullable=True)
+    checked_out_at = Column(DateTime, nullable=True)
 
     meeting = relationship("Meeting", back_populates="participants")
     user = relationship("User")

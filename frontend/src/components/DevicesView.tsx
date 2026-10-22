@@ -58,7 +58,14 @@ const mapApiEquipmentToFrontend = (apiEq: any, rooms: any[]): Device => {
 // Map frontend Device → backend request body
 const mapDeviceToApi = (dev: Device, rooms: any[]): any => {
   // Look up room_id by location name
-  let roomId = null;
+  let roomId: number | null = null;
+  if (dev.allocation === 'Cố định' && dev.location && dev.location !== 'Kho thiết bị di động') {
+    const matched = rooms.find((r: any) => (r.room_name || r.name) === dev.location || `Phòng #${r.room_id}` === dev.location);
+    if (matched) roomId = matched.room_id;
+  } else {
+    roomId = 0; // 0 instructs backend to unlink room_id to None
+  }
+
   return {
     equipment_name: dev.name,
     equipment_type: typeFrontToBack[dev.type] || dev.type.toUpperCase(),
@@ -455,7 +462,48 @@ const DevicesView: React.FC = () => {
         </button>
       </div>
 
+      {/* 4 SUMMARY STATS CARDS (US #13 - Trạng thái thiết bị) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tổng thiết bị</div>
+            <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#0f172a', marginTop: '4px' }}>{totalDevices}</div>
+          </div>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}>
+            <Box size={22} />
+          </div>
+        </div>
 
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sẵn sàng sử dụng</div>
+            <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#15803d', marginTop: '4px' }}>{readyDevices}</div>
+          </div>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+            <CheckCircle size={22} />
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Đang bảo dưỡng</div>
+            <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#b45309', marginTop: '4px' }}>{maintenanceDevices}</div>
+          </div>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706' }}>
+            <Settings size={22} />
+          </div>
+        </div>
+
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Hỏng hóc / Báo lỗi</div>
+            <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#b91c1c', marginTop: '4px' }}>{brokenDevices}</div>
+          </div>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626' }}>
+            <AlertTriangle size={22} />
+          </div>
+        </div>
+      </div>
 
       {/* ACTION BAR */}
       <div style={{ backgroundColor: '#ffffff', padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', marginBottom: '28px' }}>

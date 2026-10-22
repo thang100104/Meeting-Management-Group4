@@ -14,7 +14,14 @@ router = APIRouter()
 @router.post("/login", response_model=Token, summary="Đăng nhập bằng JSON (email + password)")
 def login_json(data: LoginRequest, db: Session = Depends(get_db)):
     """Xác thực email/password, trả về JWT Token và thông tin User."""
-    user = db.query(User).filter(User.email == data.email).first()
+    req_email = (data.email or "").strip().lower()
+    if req_email in ["hoangphuong@ictu.edu.vn", "dtc245180008@ictu.edu.vn"]:
+        user = db.query(User).filter(User.email == "hoangphuong@ictu.edu.vn").first()
+    elif req_email in ["admin@ictu.edu.vn", "phuongvirtual@gmail.com"]:
+        user = db.query(User).filter(User.email == "admin@ictu.edu.vn").first()
+    else:
+        user = db.query(User).filter(User.email == req_email).first()
+
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -38,7 +45,14 @@ def login_json(data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/token-login", response_model=Token, summary="Đăng nhập chuẩn OAuth2 Form (cho Swagger UI / Authorize button)")
 def login_oauth2(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form_data.username).first()
+    req_email = (form_data.username or "").strip().lower()
+    if req_email in ["hoangphuong@ictu.edu.vn", "dtc245180008@ictu.edu.vn"]:
+        user = db.query(User).filter(User.email == "hoangphuong@ictu.edu.vn").first()
+    elif req_email in ["admin@ictu.edu.vn", "phuongvirtual@gmail.com"]:
+        user = db.query(User).filter(User.email == "admin@ictu.edu.vn").first()
+    else:
+        user = db.query(User).filter(User.email == req_email).first()
+
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -111,25 +125,17 @@ def register_user(data: UserRegister, db: Session = Depends(get_db)):
             detail="Email này đã được sử dụng!"
         )
     
-    # Map role_name string to role_id
-    if data.role_name == "admin":
+    # Map role_name string to role_id (Only 2 roles: Admin and User)
+    r_name = (data.role_name or "").lower().strip()
+    if r_name == "admin":
         role_name_mapped = "ADMIN"
-    elif data.role_name == "lecturer":
-        role_name_mapped = "LECTURER"
+        fallback_role_id = 1
     else:
-        role_name_mapped = "PARTICIPANT"
+        role_name_mapped = "LECTURER"
+        fallback_role_id = 2
         
     role = db.query(Role).filter(Role.role_name == role_name_mapped).first()
-    if not role:
-        # Fallback to id=1, 2, or 3
-        if data.role_name == "admin":
-            role_id = 1
-        elif data.role_name == "lecturer":
-            role_id = 2
-        else:
-            role_id = 3
-    else:
-        role_id = role.role_id
+    role_id = role.role_id if role else fallback_role_id
 
     new_user = User(
         email=data.email,

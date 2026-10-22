@@ -8,6 +8,7 @@ export interface ChatMessage {
   senderName: string;
   senderAvatar?: string;
   receiverEmail: string; 
+  receiverName?: string;
   text: string;
   timestamp: string;
   isRead: boolean;
@@ -57,15 +58,17 @@ export default function NotificationManagement() {
       let otherAvatar = '';
       let isUnread = false;
 
-      if (msg.receiverEmail === 'ADMIN') {
+      const isToAdmin = msg.receiverEmail === 'ADMIN' || msg.receiverEmail === 'admin@ictu.edu.vn';
+      const isFromAdmin = msg.senderEmail === 'ADMIN' || msg.senderEmail === 'admin@ictu.edu.vn';
+
+      if (isToAdmin) {
         otherEmail = msg.senderEmail;
         otherName = msg.senderName;
         otherAvatar = msg.senderAvatar || '';
         if (!msg.isRead) isUnread = true;
-      } else if (msg.senderEmail === 'ADMIN') {
+      } else if (isFromAdmin) {
         otherEmail = msg.receiverEmail;
-        // In reality, admin might not know the name if it's the first message they send, but usually user sends first
-        otherName = msg.receiverEmail; 
+        otherName = msg.receiverName || msg.receiverEmail; 
       } else {
         return; // Not related to ADMIN
       }
@@ -82,7 +85,7 @@ export default function NotificationManagement() {
       } else {
         existing.lastMessage = msg;
         // Update name/avatar just in case it was missing
-        if (msg.receiverEmail === 'ADMIN') {
+        if (isToAdmin) {
           existing.userName = msg.senderName;
           existing.userAvatar = msg.senderAvatar;
         }
@@ -101,7 +104,7 @@ export default function NotificationManagement() {
     if (selectedUser) {
       let hasChanges = false;
       const updatedMessages = allMessages.map(m => {
-        if (m.senderEmail === selectedUser.userEmail && m.receiverEmail === 'ADMIN' && !m.isRead) {
+        if (m.senderEmail === selectedUser.userEmail && (m.receiverEmail === 'ADMIN' || m.receiverEmail === 'admin@ictu.edu.vn') && !m.isRead) {
           hasChanges = true;
           return { ...m, isRead: true };
         }
@@ -172,8 +175,8 @@ export default function NotificationManagement() {
   );
 
   const activeMessages = messages.filter(m => 
-    (m.senderEmail === 'ADMIN' && m.receiverEmail === selectedUser?.userEmail) ||
-    (m.receiverEmail === 'ADMIN' && m.senderEmail === selectedUser?.userEmail)
+    ((m.senderEmail === 'ADMIN' || m.senderEmail === 'admin@ictu.edu.vn') && m.receiverEmail === selectedUser?.userEmail) ||
+    ((m.receiverEmail === 'ADMIN' || m.receiverEmail === 'admin@ictu.edu.vn') && m.senderEmail === selectedUser?.userEmail)
   );
 
   const emojis = ['😀', '😂', '😍', '🙏', '👍', '😢', '😡', '👏', '🎉', '❤️'];

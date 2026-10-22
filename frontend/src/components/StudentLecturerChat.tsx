@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, Search, User, MessageSquare, CheckCheck, Clock, 
-  Smile, Paperclip, Image as ImageIcon, Circle, ChevronRight,
-  GraduationCap, BookOpen, ShieldAlert
+  Smile, ShieldCheck, X, Sparkles, Building2, UserCheck,
+  GraduationCap, BookOpen, AlertCircle
 } from 'lucide-react';
 import { getStorage, setStorage, useDataSync } from '../utils/syncHelper';
 import { addNotification } from '../utils/notificationService';
@@ -28,227 +28,226 @@ export interface ChatContact {
   name: string;
   fullName?: string;
   email: string;
-  role: 'lecturer' | 'student';
+  role: 'admin' | 'lecturer' | 'student' | 'user';
+  roleName?: string;
   department?: string;
   avatar?: string;
   online?: boolean;
+  isAdmin?: boolean;
 }
 
-// Danh sách giảng viên mặc định chuẩn bị sẵn
-const DEFAULT_LECTURERS: ChatContact[] = [
-  {
-    id: 1,
-    name: 'GV. Nguyễn Phương',
-    fullName: 'Nguyễn Phương',
-    email: 'nguyenphuong@ictu.edu.vn',
-    role: 'lecturer',
-    department: 'Khoa Công nghệ Thông tin',
-    avatar: 'https://ui-avatars.com/api/?name=Nguyen+Phuong&background=0284c7&color=fff',
-    online: true
-  },
-  {
-    id: 2,
-    name: 'ThS. Hoàng Thanh Phương',
-    fullName: 'Hoàng Thanh Phương',
-    email: 'hoangphuong@ictu.edu.vn',
-    role: 'lecturer',
-    department: 'Bộ môn Kỹ thuật Phần mềm',
-    avatar: 'https://ui-avatars.com/api/?name=Hoang+Phuong&background=2563eb&color=fff',
-    online: true
-  },
-  {
-    id: 3,
-    name: 'ThS. Trần Thị B',
-    fullName: 'Trần Thị B',
-    email: 'tranthib@ictu.edu.vn',
-    role: 'lecturer',
-    department: 'Phòng Đào Tạo & QLKH',
-    avatar: 'https://ui-avatars.com/api/?name=Tran+Thi+B&background=7c3aed&color=fff',
-    online: false
-  }
-];
+// Tài khoản Quản trị viên luôn sẵn sàng hỗ trợ mọi lúc (Ẩn danh hệ thống)
+export const ADMIN_CONTACT: ChatContact = {
+  id: 'admin_sys',
+  name: 'Quản trị viên Hệ thống',
+  fullName: 'Quản trị viên Hệ thống',
+  email: 'admin@ictu.edu.vn',
+  role: 'admin',
+  roleName: 'Quản trị viên',
+  department: 'Ban Quản trị & Hỗ trợ kỹ thuật',
+  avatar: 'https://ui-avatars.com/api/?name=Admin+ICTU&background=0f172a&color=38bdf8',
+  online: true,
+  isAdmin: true
+};
 
-// Danh sách sinh viên mẫu trong hệ thống (chỉ giữ tài khoản sinh viên thực tế nếu cần fallback)
-const DEFAULT_STUDENTS: ChatContact[] = [
-  {
-    id: 101,
-    name: 'Sinh viên Trần Linh',
-    fullName: 'Trần Linh',
-    email: 'tranlinh@ictu.edu.vn',
-    role: 'student',
-    department: 'Khoa Công nghệ Thông tin',
-    avatar: 'https://ui-avatars.com/api/?name=Tran+Linh&background=10b981&color=fff',
-    online: true
-  }
-];
+export const resolveUserAvatar = (user: { email?: string; avatar_url?: string; avatar?: string; full_name?: string; name?: string }) => {
+  const email = (user.email || '').toLowerCase();
 
-// Tin nhắn khởi tạo ban đầu giữa SV và GV nếu chưa có
-const INITIAL_DEMO_MESSAGES: ChatMessage[] = [
-  {
-    id: 'msg_seed_1',
-    senderEmail: 'tranlinh@ictu.edu.vn',
-    senderName: 'Sinh viên Trần Linh',
-    receiverEmail: 'nguyenphuong@ictu.edu.vn',
-    receiverName: 'GV. Nguyễn Phương',
-    text: 'Thưa thầy, cho em hỏi tài liệu buổi họp báo cáo tiến độ tuần này đã được đăng tải chưa ạ?',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-    isRead: true
-  },
-  {
-    id: 'msg_seed_2',
-    senderEmail: 'nguyenphuong@ictu.edu.vn',
-    senderName: 'GV. Nguyễn Phương',
-    receiverEmail: 'tranlinh@ictu.edu.vn',
-    receiverName: 'Sinh viên Trần Linh',
-    text: 'Chào em, thầy đã gửi vào hòm thư lớp và đính kèm trên hệ thống rồi nhé. Các em chuẩn bị slide thật kỹ nha!',
-    timestamp: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
-    isRead: true
+  // 1. Nếu là Admin
+  if (email === 'admin@ictu.edu.vn' || email === 'admin') {
+    return 'https://ui-avatars.com/api/?name=Admin+ICTU&background=0f172a&color=38bdf8';
   }
-];
+
+  // 2. Nếu có avatar thực tế từ Database (Base64 hoặc URL)
+  if (user.avatar_url && user.avatar_url.trim() && !user.avatar_url.includes('ui-avatars.com')) {
+    return user.avatar_url;
+  }
+  if (user.avatar && user.avatar.trim() && !user.avatar.includes('ui-avatars.com')) {
+    return user.avatar;
+  }
+
+  // 3. Fallback ảnh avatar mẫu có sẵn trong hệ thống
+  if (email.includes('hoangphuong')) {
+    return '/hoang_phuong_avatar.png';
+  }
+  if (email.includes('nguyenphuong')) {
+    return '/phuong_account_avatar.png';
+  }
+
+  // 4. Fallback avatar theo tên
+  const displayName = user.full_name || user.name || 'User';
+  return user.avatar_url || user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0284c7&color=fff`;
+};
 
 interface StudentLecturerChatProps {
-  currentRole: 'student' | 'lecturer';
+  currentRole: 'student' | 'lecturer' | 'user';
   userProfile: any;
 }
 
 export default function StudentLecturerChat({ currentRole, userProfile }: StudentLecturerChatProps) {
-  const myEmail = userProfile?.email || (currentRole === 'student' ? 'tranlinh@ictu.edu.vn' : 'nguyenphuong@ictu.edu.vn');
-  const myName = userProfile?.fullName || userProfile?.name || (currentRole === 'student' ? 'Sinh viên' : 'Giảng viên');
+  const myEmail = userProfile?.email || (currentRole === 'student' ? 'tranlinh@ictu.edu.vn' : 'hoangphuong@ictu.edu.vn');
+  const myName = userProfile?.fullName || userProfile?.name || 'Người dùng';
   const myAvatar = userProfile?.avatar || userProfile?.avatarUrl;
+  const isMeAdmin = myEmail.toLowerCase() === 'admin@ictu.edu.vn' || (userProfile?.role || '').toLowerCase() === 'admin';
 
-  const [contacts, setContacts] = useState<ChatContact[]>([]);
-  const [selectedContact, setSelectedContact] = useState<ChatContact | null>(null);
+  const [contacts, setContacts] = useState<ChatContact[]>(() => {
+    // Luôn có Admin cho tài khoản người dùng thông thường
+    return isMeAdmin ? [] : [ADMIN_CONTACT];
+  });
+  const [selectedContact, setSelectedContact] = useState<ChatContact | null>(() => {
+    return isMeAdmin ? null : ADMIN_CONTACT;
+  });
+  
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<ChatContact[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
   const [allMessages, setAllMessages] = useState<ChatMessage[]>(() => {
-    let saved = getStorage<ChatMessage[]>('meetinghub_chats', []);
-    // Dọn dẹp bỏ các tin nhắn mẫu của sinh viên D và E nếu từng lưu
-    if (Array.isArray(saved) && saved.length > 0) {
-      saved = saved.filter(
-        m => m.senderEmail !== 'sinhvien_d@ictu.edu.vn' &&
-             m.receiverEmail !== 'sinhvien_d@ictu.edu.vn' &&
-             m.senderEmail !== 'sinhvien_e@ictu.edu.vn' &&
-             m.receiverEmail !== 'sinhvien_e@ictu.edu.vn'
-      );
-      setStorage('meetinghub_chats', saved);
-      return saved;
-    }
-    setStorage('meetinghub_chats', INITIAL_DEMO_MESSAGES);
-    return INITIAL_DEMO_MESSAGES;
+    return getStorage<ChatMessage[]>('meetinghub_chats', []);
   });
   const [inputText, setInputText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Tải danh sách liên hệ theo vai trò
+  // 1. Tải danh sách liên hệ đã từng nhắn tin từ meetinghub_chats + danh sách người dùng ban đầu
   useEffect(() => {
-    const fetchContacts = async () => {
-      if (currentRole === 'student') {
-        // Sinh viên chat với Giảng viên -> Cần danh sách các Giảng viên
-        try {
-          const res = await api.get('/users/lecturers');
-          if (Array.isArray(res.data) && res.data.length > 0) {
-            const mapped: ChatContact[] = res.data.map(u => ({
-              id: u.id || u.user_id,
-              name: u.full_name?.startsWith('GV') || u.full_name?.startsWith('ThS') ? u.full_name : `GV. ${u.full_name}`,
+    const loadInitialContacts = async () => {
+      const chats = getStorage<ChatMessage[]>('meetinghub_chats', []);
+      const userEmails = new Set<string>();
+
+      // Lấy danh sách email đã từng nhắn qua lại
+      chats.forEach(m => {
+        if (m.senderEmail?.toLowerCase() === myEmail.toLowerCase() && m.receiverEmail) {
+          userEmails.add(m.receiverEmail.toLowerCase());
+        }
+        if (m.receiverEmail?.toLowerCase() === myEmail.toLowerCase() && m.senderEmail) {
+          userEmails.add(m.senderEmail.toLowerCase());
+        }
+      });
+
+      let loadedContacts: ChatContact[] = [];
+
+      // Luôn ghim Admin lên đầu nếu tôi không phải Admin
+      if (!isMeAdmin) {
+        loadedContacts.push(ADMIN_CONTACT);
+        userEmails.delete('admin@ictu.edu.vn');
+        userEmails.delete('admin');
+      }
+
+      // Lấy thông tin các người dùng đã từng nhắn từ API
+      try {
+        const res = await api.get('/meetings/search-users?limit=30');
+        if (Array.isArray(res.data)) {
+          const apiUsers: ChatContact[] = res.data
+            .filter((u: any) => u.email?.toLowerCase() !== myEmail.toLowerCase())
+            .map((u: any) => ({
+              id: u.user_id,
+              name: u.full_name,
               fullName: u.full_name,
               email: u.email,
-              role: 'lecturer',
-              department: u.department || 'Khoa Công nghệ Thông tin',
-              avatar: u.avatar,
-              online: true
+              role: u.role_name === 'ADMIN' ? 'admin' : (u.role_name === 'ORGANIZER' ? 'lecturer' : 'student'),
+              roleName: u.role_name === 'ADMIN' ? 'Quản trị viên' : (u.role_name === 'ORGANIZER' ? 'Giảng viên' : (u.role_name === 'PARTICIPANT' ? 'Sinh viên' : u.role_name || 'Người dùng')),
+              department: u.department_name || 'ICTU',
+              avatar: resolveUserAvatar(u),
+              online: true,
+              isAdmin: u.role_name === 'ADMIN' || u.email?.toLowerCase() === 'admin@ictu.edu.vn'
             }));
-            setContacts(mapped);
-            if (!selectedContact && mapped.length > 0) {
-              setSelectedContact(mapped[0]);
+
+          // Đưa những người từng nhắn tin lên trước
+          apiUsers.forEach(u => {
+            if (u.email.toLowerCase() === 'admin@ictu.edu.vn') {
+              if (isMeAdmin) {
+                // Admin không tự chat với mình
+                return;
+              }
+            } else if (!loadedContacts.some(c => c.email.toLowerCase() === u.email.toLowerCase())) {
+              loadedContacts.push(u);
             }
-            return;
-          }
-        } catch (e) {
-          console.warn('Using default lecturers fallback', e);
+          });
         }
-        setContacts(DEFAULT_LECTURERS);
-        if (!selectedContact && DEFAULT_LECTURERS.length > 0) {
-          setSelectedContact(DEFAULT_LECTURERS[0]);
-        }
-      } else {
-        // Giảng viên chat với Sinh viên -> Lấy danh sách Sinh viên thật từ API backend
-        let studentList: ChatContact[] = [];
+      } catch (err) {
+        console.warn('Lỗi tải danh sách người dùng ban đầu từ API', err);
+      }
 
-        try {
-          const res = await api.get('/users/students');
-          if (Array.isArray(res.data) && res.data.length > 0) {
-            studentList = res.data
-              .filter(u => u.email !== 'sinhvien_d@ictu.edu.vn' && u.email !== 'sinhvien_e@ictu.edu.vn')
-              .map(u => ({
-                id: u.id || u.user_id,
-                name: u.full_name?.startsWith('SV') ? u.full_name : `SV. ${u.full_name}`,
-                fullName: u.full_name,
-                email: u.email,
-                role: 'student',
-                department: u.department || 'Sinh viên',
-                avatar: u.avatar || `https://ui-avatars.com/api/?name=${u.full_name}&background=10b981&color=fff`,
-                online: true
-              }));
-          }
-        } catch (e) {
-          console.warn('Cannot fetch students from API, using active chat records', e);
-        }
+      setContacts(loadedContacts);
 
-        // Nếu backend chưa có hoặc rỗng, dùng DEFAULT_STUDENTS (đã lọc sạch D & E)
-        if (studentList.length === 0) {
-          studentList = [...DEFAULT_STUDENTS];
-        }
-
-        // Bổ sung các sinh viên từng gửi tin nhắn tới giảng viên này
-        const chats = getStorage<ChatMessage[]>('meetinghub_chats', []).filter(
-          m => m.senderEmail !== 'sinhvien_d@ictu.edu.vn' &&
-               m.receiverEmail !== 'sinhvien_d@ictu.edu.vn' &&
-               m.senderEmail !== 'sinhvien_e@ictu.edu.vn' &&
-               m.receiverEmail !== 'sinhvien_e@ictu.edu.vn'
-        );
-
-        const studentEmails = new Set<string>();
-        chats.forEach(m => {
-          if (m.receiverEmail === myEmail && m.senderEmail !== myEmail && m.senderEmail !== 'ADMIN') {
-            studentEmails.add(m.senderEmail);
-          }
-          if (m.senderEmail === myEmail && m.receiverEmail !== 'ADMIN') {
-            studentEmails.add(m.receiverEmail);
-          }
-        });
-
-        studentEmails.forEach(email => {
-          if (!studentList.some(s => s.email === email)) {
-            const sampleMsg = chats.find(m => m.senderEmail === email);
-            studentList.unshift({
-              id: 'stu_' + email,
-              name: sampleMsg?.senderName || email.split('@')[0],
-              fullName: sampleMsg?.senderName || email.split('@')[0],
-              email: email,
-              role: 'student',
-              department: 'Sinh viên',
-              avatar: sampleMsg?.senderAvatar || `https://ui-avatars.com/api/?name=${email}&background=10b981&color=fff`,
-              online: true
-            });
-          }
-        });
-
-        // Loại bỏ triệt để mọi tài khoản D và E nếu còn sót
-        studentList = studentList.filter(
-          s => s.email !== 'sinhvien_d@ictu.edu.vn' && s.email !== 'sinhvien_e@ictu.edu.vn'
-        );
-
-        setContacts(studentList);
-        if (!selectedContact && studentList.length > 0) {
-          setSelectedContact(studentList[0]);
-        }
+      // Nếu chưa chọn ai, mặc định chọn Admin (hoặc người đầu tiên nếu tôi là admin)
+      if (!selectedContact && loadedContacts.length > 0) {
+        setSelectedContact(loadedContacts[0]);
       }
     };
 
-    fetchContacts();
-  }, [currentRole, myEmail]);
+    loadInitialContacts();
+  }, [myEmail, isMeAdmin]);
 
-  // 2. Lắng nghe cập nhật tin nhắn real-time
+  // 2. Tìm kiếm người dùng qua API theo tên hoặc email khi người dùng gõ trên thanh tìm kiếm
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get(`/meetings/search-users?q=${encodeURIComponent(trimmed)}&limit=20`);
+        const results: ChatContact[] = [];
+
+        // Nếu từ khóa tìm kiếm khớp với admin và tôi không phải admin, thêm admin vào kết quả
+        if (!isMeAdmin) {
+          const matchAdmin = 'quản trị viên hệ thống'.includes(trimmed.toLowerCase()) || 
+                             'admin@ictu.edu.vn'.includes(trimmed.toLowerCase()) ||
+                             'admin'.includes(trimmed.toLowerCase());
+          if (matchAdmin) {
+            results.push(ADMIN_CONTACT);
+          }
+        }
+
+        if (Array.isArray(res.data)) {
+          res.data
+            .filter((u: any) => u.email?.toLowerCase() !== myEmail.toLowerCase())
+            .forEach((u: any) => {
+              if (u.email?.toLowerCase() === 'admin@ictu.edu.vn' && !isMeAdmin) {
+                if (!results.some(r => r.email === 'admin@ictu.edu.vn')) {
+                  results.push(ADMIN_CONTACT);
+                }
+              } else if (!results.some(r => r.email.toLowerCase() === u.email.toLowerCase())) {
+                results.push({
+                  id: u.user_id,
+                  name: u.full_name,
+                  fullName: u.full_name,
+                  email: u.email,
+                  role: u.role_name === 'ADMIN' ? 'admin' : (u.role_name === 'ORGANIZER' ? 'lecturer' : 'student'),
+                  roleName: u.role_name === 'ADMIN' ? 'Quản trị viên' : (u.role_name === 'ORGANIZER' ? 'Giảng viên' : (u.role_name === 'PARTICIPANT' ? 'Sinh viên' : u.role_name || 'Người dùng')),
+                  department: u.department_name || 'ICTU',
+                  avatar: resolveUserAvatar(u),
+                  online: true,
+                  isAdmin: u.role_name === 'ADMIN' || u.email?.toLowerCase() === 'admin@ictu.edu.vn'
+                });
+              }
+            });
+        }
+        setSearchResults(results);
+      } catch (err) {
+        console.warn('Lỗi tìm kiếm người dùng từ API', err);
+        // Fallback: Tìm trong danh bạ hiện có
+        const localMatched = contacts.filter(c => 
+          c.name.toLowerCase().includes(trimmed.toLowerCase()) ||
+          c.email.toLowerCase().includes(trimmed.toLowerCase())
+        );
+        setSearchResults(localMatched);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, myEmail, isMeAdmin, contacts]);
+
+  // 3. Lắng nghe cập nhật tin nhắn real-time
   const refreshMessages = () => {
     const saved = getStorage<ChatMessage[]>('meetinghub_chats', []);
     setAllMessages(saved);
@@ -271,38 +270,75 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
   }, [allMessages, selectedContact]);
 
   // Lọc cuộc trò chuyện giữa tôi và đối phương đang chọn
+  const isPartnerAdmin = selectedContact?.isAdmin || 
+                         selectedContact?.email.toLowerCase() === 'admin@ictu.edu.vn' || 
+                         selectedContact?.email.toUpperCase() === 'ADMIN';
+
   const conversation = selectedContact
-    ? allMessages.filter(
-        m =>
-          (m.senderEmail === myEmail && m.receiverEmail === selectedContact.email) ||
-          (m.senderEmail === selectedContact.email && m.receiverEmail === myEmail)
-      )
+    ? allMessages.filter(m => {
+        if (isPartnerAdmin) {
+          const toAdmin = m.receiverEmail?.toLowerCase() === 'admin@ictu.edu.vn' || m.receiverEmail?.toUpperCase() === 'ADMIN';
+          const fromAdmin = m.senderEmail?.toLowerCase() === 'admin@ictu.edu.vn' || m.senderEmail?.toUpperCase() === 'ADMIN';
+          return (m.senderEmail?.toLowerCase() === myEmail.toLowerCase() && toAdmin) ||
+                 (fromAdmin && m.receiverEmail?.toLowerCase() === myEmail.toLowerCase());
+        }
+        return (
+          (m.senderEmail?.toLowerCase() === myEmail.toLowerCase() && m.receiverEmail?.toLowerCase() === selectedContact.email.toLowerCase()) ||
+          (m.senderEmail?.toLowerCase() === selectedContact.email.toLowerCase() && m.receiverEmail?.toLowerCase() === myEmail.toLowerCase())
+        );
+      })
     : [];
 
   // Lấy tin nhắn cuối cùng với từng contact
   const getLastMessage = (contactEmail: string) => {
-    const filtered = allMessages.filter(
-      m =>
-        (m.senderEmail === myEmail && m.receiverEmail === contactEmail) ||
-        (m.senderEmail === contactEmail && m.receiverEmail === myEmail)
-    );
+    const isContactAdmin = contactEmail.toLowerCase() === 'admin@ictu.edu.vn' || contactEmail.toUpperCase() === 'ADMIN';
+    const filtered = allMessages.filter(m => {
+      if (isContactAdmin) {
+        const toAdmin = m.receiverEmail?.toLowerCase() === 'admin@ictu.edu.vn' || m.receiverEmail?.toUpperCase() === 'ADMIN';
+        const fromAdmin = m.senderEmail?.toLowerCase() === 'admin@ictu.edu.vn' || m.senderEmail?.toUpperCase() === 'ADMIN';
+        return (m.senderEmail?.toLowerCase() === myEmail.toLowerCase() && toAdmin) ||
+               (fromAdmin && m.receiverEmail?.toLowerCase() === myEmail.toLowerCase());
+      }
+      return (
+        (m.senderEmail?.toLowerCase() === myEmail.toLowerCase() && m.receiverEmail?.toLowerCase() === contactEmail.toLowerCase()) ||
+        (m.senderEmail?.toLowerCase() === contactEmail.toLowerCase() && m.receiverEmail?.toLowerCase() === myEmail.toLowerCase())
+      );
+    });
     if (filtered.length === 0) return null;
     return filtered[filtered.length - 1];
   };
 
+  // Chọn contact từ danh sách hoặc từ kết quả tìm kiếm
+  const handleSelectContact = (contact: ChatContact) => {
+    setSelectedContact(contact);
+    // Nếu contact chưa có trong danh sách contacts chính, thêm vào
+    setContacts(prev => {
+      if (prev.some(c => c.email.toLowerCase() === contact.email.toLowerCase())) {
+        return prev;
+      }
+      return [contact, ...prev];
+    });
+    setSearchQuery('');
+    setSearchResults([]);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
   // Gửi tin nhắn
-  const handleSendMessage = (e?: React.FormEvent) => {
+  const handleSendMessage = (e?: React.FormEvent, customText?: string) => {
     e?.preventDefault();
-    if (!inputText.trim() || !selectedContact) return;
+    const content = (customText || inputText).trim();
+    if (!content || !selectedContact) return;
 
     const newMsg: ChatMessage = {
       id: 'chat_' + Date.now(),
       senderEmail: myEmail,
       senderName: myName,
       senderAvatar: myAvatar,
-      receiverEmail: selectedContact.email,
+      receiverEmail: isPartnerAdmin ? 'admin@ictu.edu.vn' : selectedContact.email,
       receiverName: selectedContact.name,
-      text: inputText.trim(),
+      text: content,
       timestamp: new Date().toISOString(),
       isRead: false
     };
@@ -311,110 +347,129 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
     setAllMessages(updated);
     setStorage('meetinghub_chats', updated);
 
-    // Bắn thông báo cho đối phương
-    if (currentRole === 'student') {
-      // Sinh viên nhắn -> Báo cho Giảng viên
+    // Kích hoạt thông báo hệ thống
+    if (isPartnerAdmin) {
       addNotification({
-        title: `Tin nhắn từ Sinh viên ${myName}`,
-        content: `Sinh viên ${myName}: "${inputText.trim()}"`,
-        targetRole: 'lecturer',
-        senderRole: 'student',
+        title: `Tin nhắn từ ${myName}`,
+        content: `${myName}: "${content}"`,
+        targetRole: 'admin',
+        senderRole: (currentRole || 'user') as any,
         senderName: myName,
         type: 'message'
       });
     } else {
-      // Giảng viên trả lời -> Báo cho Sinh viên
       addNotification({
         title: `Tin nhắn từ ${myName}`,
-        content: `${myName}: "${inputText.trim()}"`,
-        targetRole: 'student',
-        senderRole: 'lecturer',
+        content: `${myName}: "${content}"`,
+        targetRole: (selectedContact.role || 'all') as any,
+        senderRole: (currentRole || 'user') as any,
         senderName: myName,
         type: 'message'
       });
     }
 
+    // Phát event đồng bộ cho các tab
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new Event('appDataSync'));
+
     setInputText('');
     setShowEmoji(false);
   };
 
-  // Danh sách đã lọc theo ô tìm kiếm
-  const filteredContacts = contacts.filter(
-    c =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.department && c.department.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
   const emojis = ['👍', '👋', '🙏', '😊', '❤️', '👏', '🎯', '📚', '💡', '✅'];
+
+  // Danh sách hiển thị ở cột trái: nếu đang tìm kiếm thì hiển thị searchResults, ngược lại hiển thị contacts
+  const displayedContacts = searchQuery.trim() ? searchResults : contacts;
 
   return (
     <div className="flex h-[calc(100vh-100px)] bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm m-2 sm:m-4">
-      {/* ── CỘT BÊN TRÁI: DANH SÁCH NGƯỜI LIÊN HỆ ── */}
+      {/* ── CỘT BÊN TRÁI: DANH SÁCH & TÌM KIẾM LIÊN HỆ ── */}
       <aside className="w-80 sm:w-96 border-r border-slate-200 bg-slate-50/50 flex flex-col shrink-0">
         {/* Header cột trái */}
         <div className="p-4 border-b border-slate-200 bg-white">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white ${
-                currentRole === 'student' ? 'bg-blue-600' : 'bg-emerald-600'
-              }`}>
-                {currentRole === 'student' ? <GraduationCap size={18} /> : <BookOpen size={18} />}
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-sm shadow-blue-500/20">
+                <MessageSquare size={19} />
               </div>
               <div>
-                <h3 className="font-bold text-slate-800 text-sm">
-                  {currentRole === 'student' ? 'Giảng viên hướng dẫn' : 'Tin nhắn Sinh viên'}
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  {currentRole === 'student' ? 'Chọn giảng viên để trao đổi' : 'Danh sách sinh viên liên hệ'}
-                </p>
+                <h3 className="font-bold text-slate-800 text-sm">Tin nhắn trao đổi</h3>
+                <p className="text-[11px] text-slate-500">Trao đổi với Quản trị viên & Người dùng</p>
               </div>
             </div>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-              {filteredContacts.length}
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+              {displayedContacts.length}
             </span>
           </div>
 
-          {/* Ô tìm kiếm */}
+          {/* Ô tìm kiếm người dùng theo tên hoặc email */}
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-slate-400" size={15} />
             <input
               type="text"
-              placeholder={currentRole === 'student' ? 'Tìm tên giảng viên, khoa...' : 'Tìm tên sinh viên, lớp...'}
+              placeholder="Tìm theo tên hoặc email (vd: admin, @ictu)..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-100 border-none rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              className="w-full pl-9 pr-8 py-2 bg-slate-100 border border-transparent rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500/40 focus:ring-2 focus:ring-blue-500/20 transition-all"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
+
+          {searchQuery.trim() && (
+            <div className="text-[11px] text-slate-500 mt-2 flex items-center justify-between">
+              <span>{isSearching ? 'Đang tìm kiếm...' : `Kết quả tìm kiếm cho "${searchQuery}":`}</span>
+              <span>{searchResults.length} người</span>
+            </div>
+          )}
         </div>
 
         {/* Danh sách người dùng */}
         <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-          {filteredContacts.length === 0 ? (
+          {displayedContacts.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
               <User className="w-8 h-8 text-slate-300" />
-              <span>Không tìm thấy người liên hệ phù hợp</span>
+              <span>{searchQuery.trim() ? 'Không tìm thấy người dùng phù hợp' : 'Chưa có người liên hệ nào'}</span>
+              {searchQuery.trim() && (
+                <span className="text-[11px] text-slate-400">Hãy thử nhập email (vd: @ictu.edu.vn) hoặc họ tên</span>
+              )}
             </div>
           ) : (
-            filteredContacts.map(contact => {
+            displayedContacts.map(contact => {
               const lastMsg = getLastMessage(contact.email);
-              const isSelected = selectedContact?.email === contact.email;
+              const isSelected = selectedContact?.email.toLowerCase() === contact.email.toLowerCase();
+              const isAdmin = contact.isAdmin || contact.email.toLowerCase() === 'admin@ictu.edu.vn';
 
               return (
                 <div
                   key={contact.email}
-                  onClick={() => setSelectedContact(contact)}
+                  onClick={() => handleSelectContact(contact)}
                   className={`p-3.5 flex items-start gap-3 cursor-pointer transition-all hover:bg-slate-100/70 ${
-                    isSelected ? 'bg-blue-50/80 border-r-4 border-blue-600' : ''
-                  }`}
+                    isSelected ? 'bg-blue-50/90 border-r-4 border-blue-600' : ''
+                  } ${isAdmin && !isSelected ? 'bg-amber-50/30' : ''}`}
                 >
                   {/* Avatar + chấm online */}
                   <div className="relative shrink-0">
-                    <img
-                      src={contact.avatar || `https://ui-avatars.com/api/?name=${contact.name}&background=random`}
-                      alt={contact.name}
-                      className="w-11 h-11 rounded-full object-cover border border-slate-200"
-                    />
+                    {isAdmin ? (
+                      <div className="w-11 h-11 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-sky-400 shadow-xs shrink-0" title="Quản trị viên Hệ thống (Ẩn danh)">
+                        <ShieldCheck size={20} />
+                      </div>
+                    ) : (
+                      <img
+                        src={resolveUserAvatar(contact)}
+                        alt={contact.name}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.name)}&background=0284c7&color=fff`;
+                        }}
+                        className="w-11 h-11 rounded-full object-cover border border-slate-200 shadow-xs"
+                      />
+                    )}
                     <span
                       className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
                         contact.online !== false ? 'bg-emerald-500' : 'bg-slate-400'
@@ -425,9 +480,16 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
                   {/* Nội dung item */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1">
-                      <p className={`text-xs truncate ${isSelected ? 'font-bold text-blue-900' : 'font-semibold text-slate-800'}`}>
-                        {contact.name}
-                      </p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className={`text-xs truncate ${isSelected ? 'font-bold text-blue-900' : 'font-semibold text-slate-800'}`}>
+                          {contact.name}
+                        </p>
+                        {isAdmin && (
+                          <span className="shrink-0 flex items-center gap-0.5 text-[9px] font-bold bg-blue-600 text-white px-1.5 py-0.2 rounded shadow-xs" title="Quản trị viên Hệ thống">
+                            <ShieldCheck size={10} /> Admin
+                          </span>
+                        )}
+                      </div>
                       {lastMsg && (
                         <span className="text-[10px] text-slate-400 shrink-0">
                           {new Date(lastMsg.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
@@ -436,16 +498,16 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
                     </div>
 
                     <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                      {contact.department}
+                      {contact.email}
                     </p>
 
                     {lastMsg ? (
                       <p className="text-[11px] text-slate-600 truncate mt-1">
-                        {lastMsg.senderEmail === myEmail ? 'Bạn: ' : ''}{lastMsg.text}
+                        {lastMsg.senderEmail?.toLowerCase() === myEmail.toLowerCase() ? 'Bạn: ' : ''}{lastMsg.text}
                       </p>
                     ) : (
-                      <p className="text-[11px] text-slate-400 italic mt-1">
-                        Chưa có tin nhắn
+                      <p className="text-[11px] text-blue-600 italic mt-1 font-medium">
+                        {isAdmin ? '⚡ Hỗ trợ kỹ thuật & Duyệt phòng' : 'Bắt đầu trao đổi...'}
                       </p>
                     )}
                   </div>
@@ -461,14 +523,23 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
         {selectedContact ? (
           <>
             {/* Header cuộc trò chuyện */}
-            <div className="h-16 px-6 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 shadow-sm">
+            <div className="h-16 px-6 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 shadow-xs">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="relative shrink-0">
-                  <img
-                    src={selectedContact.avatar || `https://ui-avatars.com/api/?name=${selectedContact.name}&background=random`}
-                    alt={selectedContact.name}
-                    className="w-10 h-10 rounded-full object-cover border border-slate-200"
-                  />
+                  {selectedContact.isAdmin || selectedContact.email.toLowerCase() === 'admin@ictu.edu.vn' ? (
+                    <div className="w-10 h-10 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-sky-400 shadow-xs shrink-0" title="Quản trị viên Hệ thống (Ẩn danh)">
+                      <ShieldCheck size={20} />
+                    </div>
+                  ) : (
+                    <img
+                      src={resolveUserAvatar(selectedContact)}
+                      alt={selectedContact.name}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedContact.name)}&background=0284c7&color=fff`;
+                      }}
+                      className="w-10 h-10 rounded-full object-cover border border-slate-200"
+                    />
+                  )}
                   <span
                     className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${
                       selectedContact.online !== false ? 'bg-emerald-500' : 'bg-slate-400'
@@ -480,19 +551,27 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
                     <h4 className="font-bold text-slate-800 text-sm truncate">
                       {selectedContact.name}
                     </h4>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      selectedContact.role === 'lecturer' 
-                        ? 'bg-blue-100 text-blue-700' 
-                        : 'bg-emerald-100 text-emerald-700'
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                      selectedContact.isAdmin || selectedContact.email.toLowerCase() === 'admin@ictu.edu.vn'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : selectedContact.role === 'lecturer' 
+                          ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     }`}>
-                      {selectedContact.role === 'lecturer' ? 'Giảng viên' : 'Sinh viên'}
+                      {selectedContact.isAdmin || selectedContact.email.toLowerCase() === 'admin@ictu.edu.vn' ? (
+                        <>
+                          <ShieldCheck size={11} /> Quản trị viên
+                        </>
+                      ) : (
+                        selectedContact.roleName || (selectedContact.role === 'lecturer' ? 'Giảng viên' : 'Sinh viên')
+                      )}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                     <span>Đang hoạt động</span>
                     <span className="text-slate-300">•</span>
-                    <span className="truncate">{selectedContact.department}</span>
+                    <span className="truncate">{selectedContact.email}</span>
                   </p>
                 </div>
               </div>
@@ -500,23 +579,57 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
 
             {/* Vùng tin nhắn */}
             <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4">
-              {/* Tin nhắn thông báo mở đầu */}
-              <div className="text-center my-4">
-                <div className="inline-block bg-blue-50 border border-blue-100 text-blue-800 text-xs px-4 py-2 rounded-2xl max-w-md shadow-sm">
-                  {currentRole === 'student' ? (
-                    <span>
-                      👋 Bạn đang trao đổi trực tiếp với <strong>{selectedContact.name}</strong>. Hãy nhắn câu hỏi, xin tài liệu hoặc các vấn đề học tập/lịch họp tại đây!
-                    </span>
+              {/* Lời chào mở đầu cuộc trò chuyện */}
+              <div className="text-center my-3">
+                <div className="inline-block bg-white border border-blue-100 text-slate-700 text-xs px-5 py-3 rounded-2xl max-w-lg shadow-sm">
+                  {isPartnerAdmin ? (
+                    <div>
+                      <p className="font-bold text-blue-700 flex items-center justify-center gap-1.5 mb-1 text-sm">
+                        <ShieldCheck size={16} /> Kênh Hỗ trợ & Quản trị viên Hệ thống
+                      </p>
+                      <p className="text-slate-600 leading-relaxed">
+                        Bạn đang trao đổi trực tiếp với <strong>Quản trị viên</strong>. Hãy gửi yêu cầu hỗ trợ kỹ thuật, duyệt phòng họp, thiết bị hoặc các thắc mắc tại đây!
+                      </p>
+                      {/* Gợi ý tin nhắn nhanh */}
+                      <div className="flex flex-wrap gap-1.5 justify-center mt-2.5">
+                        <button
+                          type="button"
+                          onClick={() => handleSendMessage(undefined, 'Xin chào Quản trị viên, tôi cần hỗ trợ về phòng họp.')}
+                          className="text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200/60 hover:bg-blue-100 transition-colors"
+                        >
+                          💡 Cần hỗ trợ về phòng họp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSendMessage(undefined, 'Xin chào, tôi muốn kiểm tra yêu cầu mượn thiết bị.')}
+                          className="text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200/60 hover:bg-blue-100 transition-colors"
+                        >
+                          💡 Kiểm tra yêu cầu thiết bị
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSendMessage(undefined, 'Báo cáo sự cố kỹ thuật phòng họp cần xử lý gấp.')}
+                          className="text-[11px] bg-red-50 text-red-700 px-2.5 py-1 rounded-full border border-red-200/60 hover:bg-red-100 transition-colors"
+                        >
+                          ⚠️ Báo sự cố kỹ thuật
+                        </button>
+                      </div>
+                    </div>
                   ) : (
-                    <span>
-                      💬 Kênh trao đổi trực tiếp với <strong>{selectedContact.name}</strong>. Mọi phản hồi của Thầy/Cô sẽ được gửi ngay đến sinh viên.
-                    </span>
+                    <div>
+                      <p className="font-semibold text-slate-800 mb-0.5">
+                        💬 Cuộc trò chuyện với <strong>{selectedContact.name}</strong>
+                      </p>
+                      <p className="text-slate-500 text-[11px]">
+                        ({selectedContact.email} - {selectedContact.department})
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
 
               {conversation.map(msg => {
-                const isMe = msg.senderEmail === myEmail;
+                const isMe = msg.senderEmail?.toLowerCase() === myEmail.toLowerCase();
 
                 return (
                   <div
@@ -524,19 +637,28 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
                     className={`flex items-end gap-2.5 ${isMe ? 'justify-end' : 'justify-start'}`}
                   >
                     {!isMe && (
-                      <img
-                        src={selectedContact.avatar || `https://ui-avatars.com/api/?name=${selectedContact.name}&background=random`}
-                        alt={selectedContact.name}
-                        className="w-7 h-7 rounded-full object-cover shrink-0 mb-1 border border-slate-200"
-                      />
+                      isPartnerAdmin ? (
+                        <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-sky-400 shrink-0 mb-1 shadow-xs" title="Quản trị viên Hệ thống (Ẩn danh)">
+                          <ShieldCheck size={16} />
+                        </div>
+                      ) : (
+                        <img
+                          src={resolveUserAvatar(selectedContact)}
+                          alt={selectedContact.name}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedContact.name)}&background=0284c7&color=fff`;
+                          }}
+                          className="w-8 h-8 rounded-full object-cover shrink-0 mb-1 border border-slate-200 shadow-xs"
+                        />
+                      )
                     )}
 
                     <div className={`max-w-[75%] sm:max-w-[65%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                       <div
-                        className={`px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-sm ${
+                        className={`px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-xs ${
                           isMe
-                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl rounded-br-sm'
-                            : 'bg-white text-slate-800 border border-slate-200/80 rounded-2xl rounded-bl-sm'
+                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl rounded-br-xs'
+                            : 'bg-white text-slate-800 border border-slate-200/80 rounded-2xl rounded-bl-xs'
                         }`}
                       >
                         {msg.text}
@@ -587,15 +709,12 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
                 </button>
 
                 <input
+                  ref={inputRef}
                   type="text"
-                  placeholder={
-                    currentRole === 'student'
-                      ? `Nhập nội dung nhắn cho ${selectedContact.name}...`
-                      : `Nhập nội dung trả lời ${selectedContact.name}...`
-                  }
+                  placeholder={`Nhập tin nhắn trao đổi với ${selectedContact.name} (Nhấn Enter để gửi)...`}
                   value={inputText}
                   onChange={e => setInputText(e.target.value)}
-                  className="flex-1 py-2.5 px-4 bg-slate-100 border-none rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="flex-1 py-2.5 px-4 bg-slate-100 border border-transparent rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500/40 focus:ring-2 focus:ring-blue-500/20 transition-all"
                 />
 
                 <button
@@ -603,7 +722,7 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
                   disabled={!inputText.trim()}
                   className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
                     inputText.trim()
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 hover:bg-blue-700'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 cursor-pointer'
                       : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                   }`}
                   title="Gửi tin nhắn"
@@ -618,9 +737,7 @@ export default function StudentLecturerChat({ currentRole, userProfile }: Studen
             <MessageSquare size={48} className="text-slate-300 mb-3 stroke-[1.5]" />
             <h4 className="font-bold text-slate-700 text-base">Chưa chọn cuộc trò chuyện</h4>
             <p className="text-xs text-slate-400 mt-1 max-w-sm">
-              {currentRole === 'student'
-                ? 'Vui lòng chọn một thầy/cô ở danh sách bên trái để bắt đầu trao đổi.'
-                : 'Vui lòng chọn một sinh viên ở danh sách bên trái để xem và trả lời tin nhắn.'}
+              Vui lòng chọn Quản trị viên hoặc tìm kiếm một người dùng ở danh sách bên trái để bắt đầu nhắn tin trao đổi.
             </p>
           </div>
         )}

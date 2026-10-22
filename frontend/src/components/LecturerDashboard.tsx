@@ -4,7 +4,7 @@ import { getStorage, useDataSync } from '../utils/syncHelper';
 import { NotificationDropdown } from './NotificationDropdown';
 import {
   LayoutDashboard, Calendar, ClipboardList, Monitor, Package,
-  AlertTriangle, User, LogOut, Video, ChevronDown, Bell, Clock, Plus, MessageSquare
+  AlertTriangle, User, LogOut, Video, ChevronDown, Bell, Clock, Plus, MessageSquare, Building
 } from 'lucide-react';
 import LecturerRoomBooking from './LecturerRoomBooking';
 import LecturerMyRequests from './LecturerMyRequests';
@@ -12,10 +12,28 @@ import LecturerSchedule from './LecturerSchedule';
 import LecturerReportIssue from './LecturerReportIssue';
 import StudentLecturerChat from './StudentLecturerChat';
 import ProfileView from './ProfileView';
-import { getNotificationsForRole, type SystemNotification } from '../utils/notificationService';
+import MeetingGoogleCalendar from './MeetingGoogleCalendar';
+import api from '../services/api';
+import { getNotificationsForRole, getMeetingNotificationsForUser, type SystemNotification } from '../utils/notificationService';
 
 export default function LecturerDashboard() {
   const navigate = useNavigate();
+
+  const [userProfile, setUserProfile] = useState<any>(() => {
+    const saved = sessionStorage.getItem('user') || sessionStorage.getItem('currentUser') || sessionStorage.getItem('meetinghub_user');
+    let parsed = null;
+    try {
+      if (saved && saved !== 'undefined' && saved !== 'null') {
+        parsed = JSON.parse(saved);
+      }
+    } catch (e) { }
+
+    return parsed || {
+      fullName: "Người dùng",
+      email: "user@ictu.edu.vn",
+      role: "user"
+    };
+  });
 
   const [notifications, setNotifications] = useState<SystemNotification[]>(() => 
     getNotificationsForRole('lecturer')
@@ -24,21 +42,32 @@ export default function LecturerDashboard() {
   const notifRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
-  const refreshNotifs = () => {
-    setNotifications(getNotificationsForRole('lecturer'));
+  const refreshNotifs = async () => {
+    const staticNotifs = getNotificationsForRole('lecturer');
+    try {
+      const res = await api.get('/meetings');
+      if (Array.isArray(res.data)) {
+        const dyn = getMeetingNotificationsForUser(res.data, userProfile);
+        setNotifications([...dyn, ...staticNotifs]);
+        return;
+      }
+    } catch (e) { }
+    setNotifications(staticNotifs);
   };
 
   useEffect(() => {
     refreshNotifs();
     window.addEventListener('storage', refreshNotifs);
     window.addEventListener('appDataSync', refreshNotifs);
+    window.addEventListener('meeting-updated', refreshNotifs);
     window.addEventListener('system-notification-updated', refreshNotifs);
     return () => {
       window.removeEventListener('storage', refreshNotifs);
       window.removeEventListener('appDataSync', refreshNotifs);
+      window.removeEventListener('meeting-updated', refreshNotifs);
       window.removeEventListener('system-notification-updated', refreshNotifs);
     };
-  }, []);
+  }, [userProfile?.id, userProfile?.email]);
 
   const [activeTab, setActiveTab] = useState('overview');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -59,22 +88,6 @@ export default function LecturerDashboard() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const [userProfile, setUserProfile] = useState<any>(() => {
-    const saved = sessionStorage.getItem('user') || sessionStorage.getItem('currentUser') || sessionStorage.getItem('meetinghub_user');
-    let parsed = null;
-    try {
-      if (saved && saved !== 'undefined' && saved !== 'null') {
-        parsed = JSON.parse(saved);
-      }
-    } catch (e) { }
-
-    return parsed || {
-      fullName: "Giảng viên",
-      email: "lecturer@ictu.edu.vn",
-      role: "lecturer"
-    };
-  });
 
   const updatePendingCount = async () => {
     try {
@@ -122,40 +135,38 @@ export default function LecturerDashboard() {
   }, []);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('access_token');
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
-    sessionStorage.removeItem('currentUser');
-    sessionStorage.removeItem('meetinghub_user');
+    sessionStorage.clear();
+    localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('meetinghub_user');
+    localStorage.removeItem('meetinghub_room_requests');
+    localStorage.removeItem('room_bookings');
+    localStorage.removeItem('system_rooms');
+    localStorage.removeItem('admin_rooms');
     setShowUserDropdown(false);
     navigate('/login');
   };
 
   const menuGroups = [
     {
-      group: 'TỔNG QUAN',
+      group: 'QUẢN LÝ LỊCH HỌP',
       items: [
-        { id: 'overview', label: 'Trang tổng quan', icon: <LayoutDashboard size={20} /> },
+        { id: 'overview', label: 'Lịch họp (Calendar)', icon: <Calendar size={20} /> },
       ]
     },
     {
-      group: 'PHÒNG HỌP & GIẢNG ĐƯỜNG',
+      group: 'PHÒNG HỌP & LỊCH TRÌNH',
       items: [
-        { id: 'book-room', label: 'Đăng ký phòng họp', icon: <Calendar size={20} /> },
-        { id: 'my-room-requests', label: 'Yêu cầu của tôi', icon: <ClipboardList size={20} />, badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined },
-      ]
-    },
-    {
-      group: 'LỊCH TRÌNH',
-      items: [
-        { id: 'schedule', label: 'Lịch dạy & Lịch họp', icon: <Calendar size={20} /> },
+        { id: 'book-room', label: 'Danh mục phòng họp', icon: <Building size={20} /> },
+        { id: 'schedule', label: 'Lịch trình cá nhân', icon: <Clock size={20} /> },
       ]
     },
     {
       group: 'HỖ TRỢ & CÁ NHÂN',
       items: [
-        { id: 'student-chat', label: 'Tin nhắn sinh viên', icon: <MessageSquare size={20} /> },
-        { id: 'report-issue', label: 'Hỗ trợ kỹ thuật & Báo cáo', icon: <AlertTriangle size={20} /> },
+        { id: 'student-chat', label: 'Tin nhắn trao đổi', icon: <MessageSquare size={20} /> },
         { id: 'profile', label: 'Hồ sơ cá nhân', icon: <User size={20} /> },
       ]
     }
@@ -178,15 +189,15 @@ export default function LecturerDashboard() {
             <img src={userProfile.avatar || userProfile.avatarUrl} alt="Avatar" className="w-10 h-10 rounded-full object-cover shrink-0 border-2 border-white/20" />
           ) : (
             <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #3b82f6, #2dd4bf)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: 'bold', color: 'white', flexShrink: 0 }}>
-              {userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : (userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : 'G')}
+              {userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : (userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : 'U')}
             </div>
           )}
           <div style={{ overflow: 'hidden' }}>
             <div style={{ fontSize: '15px', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {userProfile?.fullName || userProfile?.name || 'Giảng viên'}
+              {userProfile?.fullName || userProfile?.name || 'Người dùng'}
             </div>
             <div style={{ fontSize: '13px', color: '#94a3b8', marginTop: '2px' }}>
-              Giảng viên
+              Người dùng
             </div>
           </div>
         </div>
@@ -229,8 +240,8 @@ export default function LecturerDashboard() {
                         {item.icon}
                         {item.label}
                       </div>
-                      {item.badge && (
-                        <span style={{ backgroundColor: '#3b82f6', color: 'white', fontSize: '11px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '999px' }}>{item.badge}</span>
+                      {(item as any).badge && (
+                        <span style={{ backgroundColor: '#3b82f6', color: 'white', fontSize: '11px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '999px' }}>{(item as any).badge}</span>
                       )}
                     </button>
                   );
@@ -256,235 +267,94 @@ export default function LecturerDashboard() {
       {/* MAIN CONTENT */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
-        {/* Header */}
-        <header style={{
-          height: '72px',
-          backgroundColor: activeTab === 'overview' ? 'rgba(15, 23, 42, 1)' : '#ffffff',
-          borderBottom: activeTab === 'overview' ? '1px solid rgba(255,255,255,0.05)' : '1px solid #e2e8f0',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          padding: '0 24px',
-          flexShrink: 0,
-          transition: 'all 0.3s ease'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <div ref={notifRef} style={{ position: 'relative' }}>
-              <button
-                type="button"
-                onClick={() => { setShowNotif(prev => !prev); setShowUserDropdown(false); }}
-                style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: activeTab === 'overview' ? '#f8fafc' : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}
-                title="Thông báo"
-              >
-                <Bell size={20} />
-                {notifications.filter(n => !n.isRead).length > 0 && (
-                  <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', backgroundColor: '#ef4444', color: 'white', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: '2px solid white' }}>
-                    {notifications.filter(n => !n.isRead).length}
-                  </span>
+        {/* Header - chỉ hiển thị trên các tab khác overview */}
+        {activeTab !== 'overview' && (
+          <header style={{
+            height: '64px',
+            backgroundColor: '#ffffff',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            padding: '0 24px',
+            flexShrink: 0
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <div ref={notifRef} style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowNotif(prev => !prev); setShowUserDropdown(false); }}
+                  style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}
+                  title="Thông báo"
+                >
+                  <Bell size={20} />
+                  {notifications.filter(n => !n.isRead).length > 0 && (
+                    <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '18px', height: '18px', backgroundColor: '#ef4444', color: 'white', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: '2px solid white' }}>
+                      {notifications.filter(n => !n.isRead).length}
+                    </span>
+                  )}
+                </button>
+                {showNotif && (
+                  <NotificationDropdown onClose={() => setShowNotif(false)} role="lecturer" userProfile={userProfile} />
                 )}
-              </button>
-              {showNotif && (
-                <NotificationDropdown onClose={() => setShowNotif(false)} role="lecturer" />
-              )}
-            </div>
-            <div style={{ width: '1px', height: '24px', backgroundColor: activeTab === 'overview' ? 'rgba(255,255,255,0.1)' : '#e2e8f0' }}></div>
+              </div>
+              <div style={{ width: '1px', height: '24px', backgroundColor: '#e2e8f0' }}></div>
 
-            <div ref={userDropdownRef} style={{ position: 'relative' }}>
-              <button
-                type="button"
-                onClick={() => { setShowUserDropdown(prev => !prev); setShowNotif(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: '8px', transition: 'background-color 0.2s' }}
-                className={activeTab === 'overview' ? "hover:bg-slate-800" : "hover:bg-slate-50"}
-              >
-                {userProfile?.avatar || userProfile?.avatarUrl ? (
-                  <img src={userProfile.avatar || userProfile.avatarUrl} alt="Avatar" className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200" />
-                ) : (
-                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: activeTab === 'overview' ? 'rgba(255,255,255,0.1)' : '#e0f2fe', color: activeTab === 'overview' ? '#f8fafc' : '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '14px' }}>
-                    {userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : (userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : 'G')}
-                  </div>
-                )}
-                <div style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: '600', color: activeTab === 'overview' ? '#f8fafc' : '#1e293b' }}>
-                    {userProfile?.fullName || userProfile?.name || 'Giảng viên'}
-                  </span>
-                  <ChevronDown size={14} color={activeTab === 'overview' ? '#cbd5e1' : '#64748b'} />
-                </div>
-              </button>
-
-              {showUserDropdown && (
-                <div style={{ position: 'absolute', top: '110%', right: '0', backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)', width: '220px', overflow: 'hidden', border: '1px solid #e2e8f0', zIndex: 50 }}>
-                  <div style={{ padding: '16px', borderBottom: '1px solid #f1f5f9' }}>
-                    <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '14px' }}>{userProfile?.fullName || userProfile?.name || 'Giảng viên'}</div>
-                    <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userProfile?.email}</div>
-                  </div>
-                  <div style={{ padding: '8px' }}>
-                    <button onClick={() => { setActiveTab('profile'); setShowUserDropdown(false); }} style={{ width: '100%', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#334155', fontSize: '14px', transition: 'background-color 0.2s', textAlign: 'left' }} className="hover:bg-slate-50">
-                      <User size={16} /> Hồ sơ cá nhân
-                    </button>
-                    <button onClick={handleLogout} style={{ width: '100%', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#dc2626', fontSize: '14px', transition: 'background-color 0.2s', textAlign: 'left' }} className="hover:bg-red-50">
-                      <LogOut size={16} /> Đăng xuất
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-
-        {/* Dashboard Content */}
-        <div style={{ flex: 1, padding: activeTab === 'overview' ? '0' : '32px', overflowY: 'auto', backgroundColor: activeTab === 'overview' ? '#0f172a' : 'transparent' }}>
-          <style>{`
-            @keyframes floatAnimation {
-              0%, 100% { transform: translateY(0) rotate(-5deg); }
-              50% { transform: translateY(-10px) rotate(-5deg); }
-            }
-            @keyframes floatAnimationReverse {
-              0%, 100% { transform: translateY(0) rotate(3deg); }
-              50% { transform: translateY(-12px) rotate(3deg); }
-            }
-            .tech-card-1 {
-              animation: floatAnimation 4s ease-in-out infinite;
-              transition: all 0.3s ease-out;
-              cursor: pointer;
-            }
-            .tech-card-1:hover {
-              transform: scale(1.1) rotate(0deg) !important;
-              border-color: #34d399 !important;
-              box-shadow: 0 0 20px rgba(16,185,129,0.5) !important;
-              animation-play-state: paused;
-            }
-            .tech-card-2 {
-              animation: floatAnimationReverse 5s ease-in-out infinite;
-              transition: all 0.3s ease-out;
-              cursor: pointer;
-            }
-            .tech-card-2:hover {
-              transform: scale(1.1) rotate(0deg) !important;
-              border-color: #34d399 !important;
-              box-shadow: 0 0 20px rgba(16,185,129,0.5) !important;
-              animation-play-state: paused;
-            }
-            .hero-frame {
-              transition: all 0.5s ease;
-              cursor: pointer;
-            }
-            .hero-frame:hover {
-              transform: scale(1.05);
-              box-shadow: 0 0 40px rgba(16,185,129,0.6) !important;
-              border-color: #34d399 !important;
-            }
-          `}</style>
-
-          {activeTab === 'overview' ? (
-            <>
-              {/* FULL-SCREEN EDGE-TO-EDGE HERO BANNER */}
-              <div
-                style={{
-                  position: 'relative',
-                  width: '100%',
-                  minHeight: 'calc(100vh - 72px)',
-                  overflow: 'hidden',
-                  backgroundImage: 'url("https://images.unsplash.com/photo-1517502884422-41eaead166d4?auto=format&fit=crop&q=80&w=1920")',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                {/* Dark/Cyan Gradient Overlay */}
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'linear-gradient(to right, rgba(15, 23, 42, 0.98) 0%, rgba(15, 23, 42, 0.85) 45%, rgba(0, 180, 147, 0.2) 100%)'
-                }}></div>
-
-                {/* Main Content Grid */}
-                <div className="font-sans antialiased w-full flex flex-col lg:flex-row justify-between items-center px-10 py-12 lg:px-16 lg:py-20 gap-8 lg:gap-12" style={{ position: 'relative', zIndex: 2 }}>
-
-                  {/* Left Column: Text & CTA */}
-                  <div className="w-full lg:w-7/12 flex flex-col items-start">
-                    <div className="text-xs font-semibold tracking-widest uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-4 py-1.5 rounded-full inline-flex items-center gap-2 mb-6">
-                      ✨ MEETINGHUB - ICTU PHÒNG HỌP & THIẾT BỊ
+              <div ref={userDropdownRef} style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowUserDropdown(prev => !prev); setShowNotif(false); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: '8px' }}
+                  className="hover:bg-slate-50"
+                >
+                  {userProfile?.avatar || userProfile?.avatarUrl ? (
+                    <img src={userProfile.avatar || userProfile.avatarUrl} alt="Avatar" className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200" />
+                  ) : (
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#e0f2fe', color: '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '14px' }}>
+                      {userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : (userProfile?.name ? userProfile.name.charAt(0).toUpperCase() : 'G')}
                     </div>
+                  )}
+                  <div style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>
+                      {userProfile?.fullName || userProfile?.name || 'Giảng viên'}
+                    </span>
+                    <ChevronDown size={14} color="#64748b" />
+                  </div>
+                </button>
 
-                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.15] text-white mb-6">
-                      HỆ THỐNG PHÒNG HỌP <br />
-                      <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-                        & THIẾT BỊ GIẢNG DẠY
-                      </span> <br />
-                      THÔNG MINH
-                    </h1>
-
-                    <p className="text-slate-300 text-base lg:text-lg font-normal leading-relaxed max-w-2xl mb-8">
-                      Chào mừng Giảng viên <strong className="font-semibold text-white">{userProfile?.fullName || userProfile?.name || 'Hoàng Thanh Phương'}</strong> • Trọn bộ giải pháp đăng ký phòng & mượn thiết bị nhanh chóng, chất lượng.
-                    </p>
-
-                    <div className="flex flex-wrap gap-4">
-                      <button
-                        onClick={() => setActiveTab('book-room')}
-                        className="bg-[#00b493] text-white px-8 py-3.5 rounded-full text-xs sm:text-sm font-extrabold tracking-wider uppercase transition-all duration-300 shadow-md hover:bg-[#009b7e] hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,180,147,0.6)] flex items-center gap-2"
-                      >
-                        ĐĂNG KÝ PHÒNG HỌP <Calendar size={18} />
+                {showUserDropdown && (
+                  <div style={{ position: 'absolute', top: '110%', right: '0', backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)', width: '220px', overflow: 'hidden', border: '1px solid #e2e8f0', zIndex: 50 }}>
+                    <div style={{ padding: '16px', borderBottom: '1px solid #f1f5f9' }}>
+                      <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '14px' }}>{userProfile?.fullName || userProfile?.name || 'Giảng viên'}</div>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userProfile?.email}</div>
+                    </div>
+                    <div style={{ padding: '8px' }}>
+                      <button onClick={() => { setActiveTab('profile'); setShowUserDropdown(false); }} style={{ width: '100%', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#334155', fontSize: '14px', textAlign: 'left' }} className="hover:bg-slate-50">
+                        <User size={16} /> Hồ sơ cá nhân
+                      </button>
+                      <button onClick={handleLogout} style={{ width: '100%', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', borderRadius: '8px', color: '#dc2626', fontSize: '14px', textAlign: 'left' }} className="hover:bg-red-50">
+                        <LogOut size={16} /> Đăng xuất
                       </button>
                     </div>
                   </div>
-
-                  {/* Right Column: Visual Showcase */}
-                  <div className="lg:w-5/12 flex justify-center items-center" style={{ position: 'relative' }}>
-
-                    {/* Big Circular Frame */}
-                    <div className="hero-frame" style={{
-                      width: '450px',
-                      height: '450px',
-                      borderRadius: '50%',
-                      border: '6px solid rgba(0, 180, 147, 0.8)',
-                      overflow: 'hidden',
-                      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 180, 147, 0.3)',
-                      position: 'relative'
-                    }}>
-                      <img
-                        src="https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&q=80&w=800"
-                        alt="Modern Equipment"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    </div>
-
-                    {/* Floating Tech Cards */}
-                    <div className="tech-card-1" style={{ position: 'absolute', top: '10%', left: '-5%', backgroundColor: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '1px solid rgba(0, 180, 147, 0.3)', padding: '12px 20px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', transform: 'rotate(-5deg)' }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: '#00b493', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                        <Video size={20} />
-                      </div>
-                      <div>
-                        <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>Camera 4K</div>
-                        <div style={{ color: '#00b493', fontSize: '12px', fontWeight: '600' }}>Sẵn sàng</div>
-                      </div>
-                    </div>
-
-                    <div className="tech-card-2" style={{ position: 'absolute', bottom: '15%', right: '0%', backgroundColor: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '1px solid rgba(0, 180, 147, 0.3)', padding: '12px 20px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', transform: 'rotate(3deg)' }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: '#0f172a', border: '1px solid #00b493', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00b493' }}>
-                        <Monitor size={20} />
-                      </div>
-                      <div>
-                        <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>Máy chiếu HD</div>
-                        <div style={{ color: '#cbd5e1', fontSize: '12px' }}>Trọn bộ thiết bị</div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                </div>
+                )}
               </div>
-            </>
+            </div>
+          </header>
+        )}
+
+        {/* Dashboard Content */}
+        <div style={{ flex: 1, padding: activeTab === 'overview' ? '0' : '32px', overflowY: activeTab === 'overview' ? 'hidden' : 'auto', backgroundColor: '#ffffff' }}>
+          {activeTab === 'overview' ? (
+            <MeetingGoogleCalendar userProfile={userProfile} userRole="lecturer" onNavigateToTab={setActiveTab} />
           ) : activeTab === 'book-room' ? (
-            <LecturerRoomBooking userProfile={userProfile} />
+            <LecturerRoomBooking userProfile={userProfile} onNavigateToTab={setActiveTab} />
           ) : activeTab === 'my-room-requests' ? (
             <LecturerMyRequests userProfile={userProfile} />
           ) : activeTab === 'schedule' ? (
             <LecturerSchedule userProfile={userProfile} navigateToTab={setActiveTab} />
-          ) : activeTab === 'student-chat' ? (
+          ) : (activeTab === 'student-chat' || activeTab === 'report-issue') ? (
             <StudentLecturerChat currentRole="lecturer" userProfile={userProfile} />
-          ) : activeTab === 'report-issue' ? (
-            <LecturerReportIssue userProfile={userProfile} />
           ) : activeTab === 'profile' ? (
             <ProfileView />
           ) : (

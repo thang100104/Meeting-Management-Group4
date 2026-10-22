@@ -40,5 +40,6 @@ class EquipmentStatsSummary(BaseModel):
     available: int
     maintenance: int
     broken: int
+    in_use: int = 0
     portable_count: int
     in_rooms_count: int

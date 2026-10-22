@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckSquare, MonitorSpeaker, Activity, ShieldCheck, Server } from 'lucide-react';
+import { CheckSquare, MonitorSpeaker, Activity, ShieldCheck, Server, CalendarDays } from 'lucide-react';
 import api from '../services/api';
 
 export default function DashboardView() {
@@ -106,27 +106,22 @@ export default function DashboardView() {
           
           {/* Tiêu đề */}
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.15]">
-            HỆ THỐNG <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-300">QUẢN LÝ PHÒNG HỌP & THIẾT BỊ</span> THÔNG MINH
+            HỆ THỐNG <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-300">QUẢN LÝ LỊCH HỌP & PHÒNG HỌP</span> THÔNG MINH
           </h1>
           
           {/* Subtitle */}
           <p className="text-slate-300 text-lg md:text-xl font-normal leading-relaxed opacity-90">
-            Chào mừng <span className="text-white font-bold">{userProfile.fullName || userProfile.shortName || 'Hoàng Phương'}</span>. Hệ thống hiện đang có <span className="text-amber-400 font-bold px-1">{pendingRequestsCount} yêu cầu</span> chờ duyệt. Trọn bộ công cụ kiểm soát không gian và thiết bị chất lượng cao.
+            Chào mừng <span className="text-white font-bold">{userProfile.fullName || userProfile.shortName || 'Hoàng Phương'}</span>. Hệ thống hiện đang có <span className="text-amber-400 font-bold px-1">{pendingRequestsCount} yêu cầu</span> chờ duyệt. Trọn bộ công cụ quản lý lịch họp, kiểm soát không gian và thiết bị thông minh.
           </p>
           
           {/* Buttons */}
           <div className="flex flex-wrap items-center gap-5 pt-4">
             <button 
-              onClick={() => navigate('/approvals')}
+              onClick={() => navigate('/calendar')}
               className="group relative flex items-center gap-3 px-8 py-4 rounded-full bg-gradient-to-r from-teal-400 to-teal-500 hover:from-teal-300 hover:to-teal-400 text-slate-950 font-extrabold tracking-wide transition-all shadow-[0_0_20px_rgba(45,212,191,0.4)] hover:shadow-[0_0_40px_rgba(45,212,191,0.6)] transform hover:-translate-y-1"
             >
-              DUYỆT YÊU CẦU
-              <CheckSquare size={20} className="group-hover:scale-110 transition-transform" />
-              {pendingRequestsCount > 0 && (
-                <span className="absolute -top-2 -right-2 flex items-center justify-center w-6 h-6 bg-red-500 text-white text-xs font-black rounded-full animate-bounce shadow-lg shadow-red-500/50">
-                  {pendingRequestsCount}
-                </span>
-              )}
+              LỊCH HỌP TOÀN TRƯỜNG
+              <CalendarDays size={20} className="group-hover:scale-110 transition-transform" />
             </button>
 
             <button 

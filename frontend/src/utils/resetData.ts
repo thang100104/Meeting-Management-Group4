@@ -36,41 +36,7 @@ export const initializeSystemData = (forceReset: boolean = false) => {
   setStorage('users_db', cleanUsersDB);
 
   // 2. INITIALIZE STANDARD RESOURCES
-  const standardRooms = [
-    {
-      id: 'ROOM_1',
-      name: 'Phòng Hội trường A1',
-      building: 'Tòa A',
-      floor: 'Tầng 1',
-      capacity: 200,
-      type: 'Hội trường',
-      status: 'Sẵn sàng',
-      image: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&q=80&w=400',
-      equipment: ['Máy chiếu', 'Micro', 'Loa', 'Bục phát biểu']
-    },
-    {
-      id: 'ROOM_2',
-      name: 'Giảng đường C102',
-      building: 'Tòa C',
-      floor: 'Tầng 1',
-      capacity: 80,
-      type: 'Giảng đường',
-      status: 'Sẵn sàng',
-      image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=400',
-      equipment: ['Máy chiếu', 'Bảng từ', 'Điều hòa']
-    },
-    {
-      id: 'ROOM_3',
-      name: 'Phòng B201',
-      building: 'Tòa B',
-      floor: 'Tầng 2',
-      capacity: 40,
-      type: 'Phòng học',
-      status: 'Sẵn sàng',
-      image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=400',
-      equipment: ['TV 65inch', 'Bảng từ']
-    }
-  ];
+  const standardRooms: any[] = [];
   setStorage('system_rooms', standardRooms);
   setStorage('admin_rooms', standardRooms);
 

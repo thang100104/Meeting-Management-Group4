@@ -1,32 +1,57 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, CheckCheck, X, MessageSquare, CheckCircle2, 
-  XCircle, Bell, Clock, ChevronRight
+  XCircle, Bell, Clock, ChevronRight, Check
 } from 'lucide-react';
 import { 
   getNotificationsForRole, markAllAsReadForRole, markSingleAsRead, 
+  getMeetingNotificationsForUser,
   type SystemNotification, type UserRole 
 } from '../utils/notificationService';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 interface NotificationDropdownProps {
   onClose: () => void;
   show?: boolean;
   role?: UserRole | string;
+  userProfile?: any;
 }
 
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ 
   onClose, 
   show, 
-  role = 'admin' 
+  role = 'admin',
+  userProfile
 }) => {
   if (show === false) return null;
+
+  const { user: authUser } = useAuth();
+  const effectiveUser = userProfile || authUser || (() => {
+    try {
+      const s = localStorage.getItem('user') || localStorage.getItem('currentUser') || sessionStorage.getItem('user');
+      return s ? JSON.parse(s) : null;
+    } catch { return null; }
+  })();
 
   const [notifications, setNotifications] = useState<SystemNotification[]>(() => 
     getNotificationsForRole(role)
   );
 
-  const refreshNotifs = () => {
-    setNotifications(getNotificationsForRole(role));
+  const refreshNotifs = async () => {
+    const staticNotifs = getNotificationsForRole(role);
+    try {
+      const res = await api.get('/meetings');
+      if (Array.isArray(res.data)) {
+        const dynamicNotifs = getMeetingNotificationsForUser(res.data, effectiveUser);
+        // Ưu tiên các thông báo động (lời mời, đang diễn ra) lên đầu
+        setNotifications([...dynamicNotifs, ...staticNotifs]);
+        return;
+      }
+    } catch (e) {
+      // API fail fallback
+    }
+    setNotifications(staticNotifs);
   };
 
   useEffect(() => {
@@ -34,24 +59,39 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
 
     window.addEventListener('storage', refreshNotifs);
     window.addEventListener('appDataSync', refreshNotifs);
+    window.addEventListener('meeting-updated', refreshNotifs);
     window.addEventListener('system-notification-updated', refreshNotifs);
 
     return () => {
       window.removeEventListener('storage', refreshNotifs);
       window.removeEventListener('appDataSync', refreshNotifs);
+      window.removeEventListener('meeting-updated', refreshNotifs);
       window.removeEventListener('system-notification-updated', refreshNotifs);
     };
-  }, [role]);
+  }, [role, effectiveUser?.id, effectiveUser?.email]);
 
   const handleMarkAllAsRead = (e: React.MouseEvent) => {
     e.stopPropagation();
-    markAllAsReadForRole(role);
+    const dynamicIds = notifications.filter(n => typeof n.id === 'string' && (n.id.startsWith('invitation_') || n.id.startsWith('inprogress_') || n.id.startsWith('upcoming_'))).map(n => n.id);
+    markAllAsReadForRole(role, dynamicIds);
     refreshNotifs();
   };
 
   const handleItemClick = (id: string | number) => {
     markSingleAsRead(id);
     refreshNotifs();
+  };
+
+  const handleRespondInvitation = async (e: React.MouseEvent, meetingId: number, status: 'ACCEPTED' | 'DECLINED') => {
+    e.stopPropagation();
+    try {
+      await api.patch(`/meetings/${meetingId}/respond`, { status });
+      markSingleAsRead(`invitation_${meetingId}`);
+      window.dispatchEvent(new Event('meeting-updated'));
+      refreshNotifs();
+    } catch (err: any) {
+      alert(`[Lỗi]: ${err.response?.data?.detail || 'Không thể phản hồi lời mời'}`);
+    }
   };
 
   const getNotificationIcon = (n: SystemNotification) => {
@@ -167,6 +207,24 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                     </span>
                   )}
                 </div>
+                {typeof n.id === 'string' && n.id.startsWith('invitation_') && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={(e) => handleRespondInvitation(e, Number(String(n.id).replace('invitation_', '')), 'ACCEPTED')}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-semibold flex items-center gap-1 shadow-sm transition-colors"
+                    >
+                      <Check className="w-3 h-3" /> Đồng ý tham gia
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleRespondInvitation(e, Number(String(n.id).replace('invitation_', '')), 'DECLINED')}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium transition-colors"
+                    >
+                      Từ chối
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))

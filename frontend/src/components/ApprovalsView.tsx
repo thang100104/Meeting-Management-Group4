@@ -81,8 +81,8 @@ export default function ApprovalsView() {
 
   // Helper to push to system notifications (visible in Header Bell dropdown)
   const pushSystemNotification = (
-    title: string, 
-    content: string, 
+    title: string,
+    content: string,
     targetRole: 'admin' | 'lecturer' | 'student' | 'all' = 'lecturer',
     type: 'booking' | 'approval' | 'rejection' | 'schedule' | 'message' | 'system' = 'approval'
   ) => {
@@ -339,7 +339,7 @@ export default function ApprovalsView() {
           const parsed = JSON.parse(saved);
           const filtered = parsed.filter((m: any) => m.id?.toString() !== id?.toString());
           localStorage.setItem('meetinghub_room_requests', JSON.stringify(filtered));
-        } catch (e) {}
+        } catch (e) { }
       }
       showToast('Đã xóa đơn đặt phòng thành công!');
       loadRoomBookings();
@@ -375,7 +375,7 @@ export default function ApprovalsView() {
           return m;
         });
         localStorage.setItem('meetinghub_room_requests', JSON.stringify(parsed));
-      } catch (e) {}
+      } catch (e) { }
     }
   };
 
@@ -395,9 +395,9 @@ export default function ApprovalsView() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       if (!req.name.toLowerCase().includes(q) &&
-          !req.room.toLowerCase().includes(q) &&
-          !req.reason.toLowerCase().includes(q) &&
-          !req.email.toLowerCase().includes(q)) {
+        !req.room.toLowerCase().includes(q) &&
+        !req.reason.toLowerCase().includes(q) &&
+        !req.email.toLowerCase().includes(q)) {
         return false;
       }
     }
@@ -410,9 +410,9 @@ export default function ApprovalsView() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       if (!req.requesterName.toLowerCase().includes(q) &&
-          !req.equipmentName.toLowerCase().includes(q) &&
-          !req.useLocation.toLowerCase().includes(q) &&
-          !req.reason.toLowerCase().includes(q)) {
+        !req.equipmentName.toLowerCase().includes(q) &&
+        !req.useLocation.toLowerCase().includes(q) &&
+        !req.reason.toLowerCase().includes(q)) {
         return false;
       }
     }
@@ -488,16 +488,15 @@ export default function ApprovalsView() {
       {/* 2. FILTERS & SEARCH - MODERN UI */}
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-4 mb-6">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          
+
           {/* Category & Status Tabs */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full lg:w-auto">
             {/* Category Toggle (Room vs Equipment) */}
             <div className="flex bg-slate-100 p-1 rounded-xl">
               <button
                 onClick={() => { setCategoryTab('rooms'); setActiveStatusTab('pending'); }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  categoryTab === 'rooms' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${categoryTab === 'rooms' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
               >
                 <Building2 size={16} />
                 Phòng họp
@@ -507,9 +506,8 @@ export default function ApprovalsView() {
               </button>
               <button
                 onClick={() => { setCategoryTab('equipments'); setActiveStatusTab('pending'); }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  categoryTab === 'equipments' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${categoryTab === 'equipments' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
               >
                 <Monitor size={16} />
                 Thiết bị
@@ -525,17 +523,15 @@ export default function ApprovalsView() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setActiveStatusTab('all')}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
-                  activeStatusTab === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                }`}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${activeStatusTab === 'all' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
               >
                 Tất cả
               </button>
               <button
                 onClick={() => setActiveStatusTab('pending')}
-                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
-                  activeStatusTab === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                }`}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${activeStatusTab === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
               >
                 <Clock size={14} /> Chờ duyệt
                 <span className="bg-amber-500 text-white text-[10px] px-1.5 rounded-full">
@@ -544,27 +540,24 @@ export default function ApprovalsView() {
               </button>
               <button
                 onClick={() => setActiveStatusTab('approved')}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
-                  activeStatusTab === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                }`}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${activeStatusTab === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
               >
                 {categoryTab === 'rooms' ? 'Đã duyệt' : 'Đang mượn'}
               </button>
               {categoryTab === 'equipments' && (
                 <button
                   onClick={() => setActiveStatusTab('returned')}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
-                    activeStatusTab === 'returned' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                  }`}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${activeStatusTab === 'returned' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    }`}
                 >
                   Đã trả lại
                 </button>
               )}
               <button
                 onClick={() => setActiveStatusTab('rejected')}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
-                  activeStatusTab === 'rejected' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                }`}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${activeStatusTab === 'rejected' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
               >
                 Từ chối
               </button>
@@ -598,11 +591,11 @@ export default function ApprovalsView() {
               </select>
             </div>
           </div>
-          
+
         </div>
       </div>
 
-            {/* 5. NỘI DUNG BẢNG DUYỆT */}
+      {/* 5. NỘI DUNG BẢNG DUYỆT */}
       {categoryTab === 'rooms' ? (
         /* ── BẢNG YÊU CẦU ĐẶT PHÒNG HỌP ── */
         <div className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden shadow-sm">
@@ -646,7 +639,7 @@ export default function ApprovalsView() {
 
                       <td className="px-5 py-4">
                         <div className="font-semibold text-slate-800 text-sm">{req.time}</div>
-                        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><Calendar size={12}/> {req.date}</div>
+                        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><Calendar size={12} /> {req.date}</div>
                       </td>
 
                       <td className="px-5 py-4 max-w-[280px]">
@@ -778,7 +771,7 @@ export default function ApprovalsView() {
                       </td>
 
                       <td className="px-5 py-4">
-                        <div className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Monitor size={14} className="text-slate-400"/> {eq.equipmentName}</div>
+                        <div className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Monitor size={14} className="text-slate-400" /> {eq.equipmentName}</div>
                         <div className="text-xs text-slate-500 mt-0.5 ml-5">SL: {eq.quantity} | Mã: {eq.equipmentId}</div>
                       </td>
 
@@ -788,7 +781,7 @@ export default function ApprovalsView() {
 
                       <td className="px-5 py-4">
                         <div className="font-semibold text-slate-800 text-sm">{eq.time}</div>
-                        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><Calendar size={12}/> {eq.date}</div>
+                        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1"><Calendar size={12} /> {eq.date}</div>
                       </td>
 
                       <td className="px-5 py-4">

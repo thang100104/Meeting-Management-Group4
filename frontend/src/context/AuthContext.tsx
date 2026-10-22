@@ -81,6 +81,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('meetinghub_user');
     localStorage.removeItem('meetinghub_room_requests');
     localStorage.removeItem('room_bookings');
+    localStorage.removeItem('system_rooms');
+    localStorage.removeItem('admin_rooms');
     localStorage.removeItem('meetinghub_equipment_requests');
     localStorage.removeItem('equipment_requests');
     

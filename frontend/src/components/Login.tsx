@@ -88,14 +88,23 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const handleLoginResponse = async (data: any) => {
     const access_token = data.access_token || data.token;
     
-    // Lưu token ngay lập tức để api.ts có thể mang theo trong request tiếp theo
+    // Lưu token ngay lập tức
     localStorage.setItem('access_token', access_token);
     localStorage.setItem('token', access_token); 
     sessionStorage.setItem('access_token', access_token);
     sessionStorage.setItem('token', access_token);
 
+    // Xây dựng thông tin user từ response của /auth/login làm nền tảng
+    let finalUserData = {
+      id: data.user_id || 1,
+      email: data.email || email.trim().toLowerCase(),
+      fullName: data.full_name || (data.email?.includes('admin') ? 'Quản trị viên' : 'Giảng viên'),
+      role: data.role || (data.email?.includes('admin') ? 'ADMIN' : 'LECTURER'),
+      avatar: data.avatar_url || ''
+    };
+
     try {
-      // 2. FRONTEND: Gọi API lấy dữ liệu chuẩn từ Database
+      // Gọi API lấy dữ liệu chi tiết từ Database nếu khả dụng
       const meResponse = await api.get('/auth/me', {
         headers: {
           Authorization: `Bearer ${access_token}`
@@ -103,38 +112,42 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       });
       
       const dbUser = meResponse.data;
-      
-      const finalUserData = {
-        id: dbUser.user_id,
-        email: dbUser.email,
-        fullName: dbUser.full_name,
-        role: dbUser.role?.role_name || dbUser.role || data.role || (dbUser.email.includes('admin') ? 'ADMIN' : 'LECTURER'),
-        avatar: dbUser.avatar_url || ''
-      };
-
-      localStorage.setItem('user', JSON.stringify(finalUserData));
-      localStorage.setItem('currentUser', JSON.stringify(finalUserData));
-      sessionStorage.setItem('user', JSON.stringify(finalUserData));
-      sessionStorage.setItem('currentUser', JSON.stringify(finalUserData));
-      setStorage('meetinghub_user', finalUserData);
-
-      onLoginSuccess(access_token, finalUserData);
-      updateUser(finalUserData);
-
-      window.dispatchEvent(new Event('user-data-updated'));
-      window.dispatchEvent(new Event('userProfileUpdated'));
-
-      const r = (finalUserData.role || '').toLowerCase();
-      if (r === 'lecturer' || r.includes('giảng viên') || r === 'organizer') {
-        navigate('/lecturer');
-      } else if (r === 'student' || r.includes('sinh viên') || r === 'participant') {
-        navigate('/student');
-      } else {
-        navigate('/dashboard'); // Admin dashboard
+      if (dbUser) {
+        finalUserData = {
+          id: dbUser.user_id,
+          email: dbUser.email,
+          fullName: dbUser.full_name,
+          role: dbUser.role?.role_name || dbUser.role || finalUserData.role,
+          avatar: dbUser.avatar_url || ''
+        };
       }
     } catch (error) {
-      console.error("Lỗi khi fetch thông tin user từ DB:", error);
-      alert("Đăng nhập thành công nhưng không lấy được thông tin hồ sơ. Vui lòng thử lại!");
+      console.warn("Không thể fetch /auth/me chi tiết, dùng thông tin đăng nhập từ token:", error);
+    }
+
+    localStorage.setItem('user', JSON.stringify(finalUserData));
+    localStorage.setItem('currentUser', JSON.stringify(finalUserData));
+    sessionStorage.setItem('user', JSON.stringify(finalUserData));
+    sessionStorage.setItem('currentUser', JSON.stringify(finalUserData));
+    setStorage('meetinghub_user', finalUserData);
+
+    // Xóa các key mock cũ nếu có trong localStorage để đảm bảo dữ liệu luôn đồng bộ với Database thực tế
+    localStorage.removeItem('meetinghub_room_requests');
+    localStorage.removeItem('room_bookings');
+    localStorage.removeItem('system_rooms');
+    localStorage.removeItem('admin_rooms');
+
+    onLoginSuccess(access_token, finalUserData);
+    updateUser(finalUserData);
+
+    window.dispatchEvent(new Event('user-data-updated'));
+    window.dispatchEvent(new Event('userProfileUpdated'));
+
+    const r = (finalUserData.role || '').toLowerCase();
+    if (r === 'admin' || r.includes('quản trị') || r.includes('cán bộ')) {
+      navigate('/dashboard'); // Admin dashboard
+    } else {
+      navigate('/user'); // User dashboard (Cổng Người dùng)
     }
   };
 
@@ -248,8 +261,38 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 <Link to="/forgot-password" className="forgot-password">Quên mật khẩu?</Link>
               </div>
 
-              <button type="submit" className="btn-login" disabled={loading}>
-                {loading ? <span className="loading-spinner-sm"></span> : 'Đăng nhập'}
+              <button 
+                type="submit" 
+                className="btn-login" 
+                disabled={loading}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '8px',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '1rem'
+                }}
+              >
+                {loading ? (
+                  <>
+                    <span 
+                      style={{ 
+                        width: '18px', 
+                        height: '18px', 
+                        border: '2px solid rgba(255,255,255,0.4)', 
+                        borderTopColor: '#ffffff', 
+                        borderRadius: '50%', 
+                        animation: 'spin 1s linear infinite', 
+                        display: 'inline-block' 
+                      }} 
+                    />
+                    <span>Đang đăng nhập...</span>
+                  </>
+                ) : (
+                  <span>Đăng nhập</span>
+                )}
               </button>
             </form>
 

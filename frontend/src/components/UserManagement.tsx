@@ -10,12 +10,14 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: 'Giảng viên' | 'Sinh viên' | 'Cán bộ phòng';
-  identifier: string; // Mã GV / MSSV
+  role: 'Quản trị viên' | 'Giảng viên' | 'Người dùng';
+  identifier: string; // Mã người dùng
   faculty: string;
   department: string; // Bộ môn hoặc Lớp
   status: 'active' | 'locked';
   avatar?: string;
+  phone?: string;
+  password?: string;
 }
 
 const MOCK_USERS: User[] = [];
@@ -23,11 +25,23 @@ const MOCK_USERS: User[] = [];
 const FACULTIES = [
   'Tất cả',
   'Khoa CNTT',
+  'Phòng Đào Tạo',
+  'Phòng Quản trị Thiết bị',
   'Khoa Điện - Điện tử',
   'Khoa Kinh tế',
   'Khoa Ngoại ngữ',
   'Phòng Hành Chính'
 ];
+
+const DEPARTMENT_MAP: Record<string, number> = {
+  'Khoa CNTT': 1,
+  'Phòng Đào Tạo': 2,
+  'Phòng Quản trị Thiết bị': 3,
+  'Khoa Điện - Điện tử': 1,
+  'Khoa Kinh tế': 1,
+  'Khoa Ngoại ngữ': 1,
+  'Phòng Hành Chính': 7
+};
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
@@ -41,13 +55,13 @@ export default function UserManagement() {
       const res = await api.get('/users');
       const apiUsers = res.data.map((u: any) => {
         const rName = (u.role?.role_name || '').toUpperCase();
-        let displayRole: 'Giảng viên' | 'Sinh viên' | 'Cán bộ phòng' = 'Sinh viên';
+        let displayRole: 'Quản trị viên' | 'Giảng viên' | 'Người dùng' = 'Người dùng';
         if (rName === 'ADMIN' || u.role_id === 1) {
-          displayRole = 'Cán bộ phòng';
-        } else if (rName === 'LECTURER' || rName === 'ORGANIZER' || u.role_id === 2 || u.role_id === 4) {
+          displayRole = 'Quản trị viên';
+        } else if (rName === 'LECTURER' || u.role_id === 2) {
           displayRole = 'Giảng viên';
         } else {
-          displayRole = 'Sinh viên';
+          displayRole = 'Người dùng';
         }
 
         return {
@@ -55,11 +69,12 @@ export default function UserManagement() {
           name: u.full_name,
           email: u.email,
           role: displayRole,
-          identifier: u.employee_id || u.student_id || (displayRole === 'Giảng viên' ? `GV-${u.user_id}` : (displayRole === 'Cán bộ phòng' ? `CB-${u.user_id}` : `SV-${u.user_id}`)),
-          faculty: u.department?.department_name || (displayRole === 'Giảng viên' ? 'Khoa CNTT' : 'Khác'),
-          department: 'N/A',
+          identifier: u.employee_id || u.student_id || (displayRole === 'Quản trị viên' ? `AD-${u.user_id}` : displayRole === 'Giảng viên' ? `GV-${u.user_id}` : `SV-${u.user_id}`),
+          faculty: u.department?.department_name || 'Khoa CNTT',
+          department: u.department?.department_name || 'N/A',
           status: u.status === 'ACTIVE' ? 'active' : 'locked',
-          avatar: u.avatar_url
+          avatar: u.avatar_url,
+          phone: u.phone
         };
       });
       setUsers(apiUsers);
@@ -69,7 +84,7 @@ export default function UserManagement() {
   };
 
   // Filters
-  const [activeTab, setActiveTab] = useState<'Tất cả' | 'Giảng viên' | 'Sinh viên' | 'Cán bộ phòng'>('Tất cả');
+  const [activeTab, setActiveTab] = useState<'Tất cả' | 'Người dùng' | 'Giảng viên' | 'Quản trị viên'>('Tất cả');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterFaculty, setFilterFaculty] = useState('Tất cả');
   const [filterStatus, setFilterStatus] = useState('Tất cả');
@@ -80,15 +95,15 @@ export default function UserManagement() {
 
   // Form State
   const [formData, setFormData] = useState<Partial<User>>({
-    role: 'Sinh viên',
+    role: 'Người dùng',
     status: 'active',
     faculty: 'Khoa CNTT'
   });
 
   // Calculate Metrics
   const totalUsers = users.length;
-  const teacherCount = users.filter(u => u.role === 'Giảng viên').length;
-  const studentCount = users.filter(u => u.role === 'Sinh viên').length;
+  const regularUserCount = users.filter(u => u.role === 'Người dùng').length;
+  const adminCount = users.filter(u => u.role === 'Quản trị viên').length;
   const lockedCount = users.filter(u => u.status === 'locked').length;
 
   // Filter Logic
@@ -114,7 +129,7 @@ export default function UserManagement() {
       setFormData(user);
     } else {
       setEditingUser(null);
-      setFormData({ role: 'Sinh viên', status: 'active', faculty: 'Khoa CNTT' });
+      setFormData({ role: 'Người dùng', status: 'active', faculty: 'Khoa CNTT' });
     }
     setIsModalOpen(true);
   };
@@ -127,17 +142,20 @@ export default function UserManagement() {
     }
 
     const roleIdMap: Record<string, number> = {
-      'Cán bộ phòng': 1,
+      'Quản trị viên': 1,
       'Giảng viên': 2,
-      'Sinh viên': 3
+      'Người dùng': 3
     };
-    const targetRoleId = roleIdMap[formData.role || 'Sinh viên'] || 3;
+    const targetRoleId = roleIdMap[formData.role || 'Người dùng'] || 3;
+    const targetDeptId = DEPARTMENT_MAP[formData.faculty || 'Khoa CNTT'] || 1;
 
     try {
       if (editingUser) {
         await api.put(`/users/${editingUser.id}`, {
           full_name: formData.name,
+          phone: formData.phone || null,
           role_id: targetRoleId,
+          department_id: targetDeptId,
           status: formData.status === 'active' ? 'ACTIVE' : 'INACTIVE'
         });
         alert("✓ Cập nhật thông tin và vai trò người dùng thành công!");
@@ -145,11 +163,13 @@ export default function UserManagement() {
         await api.post('/users', {
           email: formData.email,
           full_name: formData.name,
-          password: 'password123',
+          password: formData.password || 'password123',
+          phone: formData.phone || null,
           role_id: targetRoleId,
+          department_id: targetDeptId,
           status: formData.status === 'active' ? 'ACTIVE' : 'INACTIVE'
         });
-        alert("✓ Thêm người dùng mới thành công!");
+        alert(`✓ Thêm người dùng mới thành công!\n- Họ tên: ${formData.name}\n- Email: ${formData.email}\n- Vai trò: ${formData.role}\n- Mật khẩu: ${formData.password || 'password123'}`);
       }
       setIsModalOpen(false);
       fetchUsers();
@@ -223,8 +243,8 @@ export default function UserManagement() {
       {/* 1. HEADER & ACTION */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="font-bold text-xl text-slate-900">Quản lý Người dùng & Tài khoản</h1>
-          <p className="text-sm text-slate-500 mt-1">Quản lý thông tin, phân quyền và trạng thái hoạt động của Giảng viên và Sinh viên</p>
+          <h1 className="font-bold text-xl text-slate-900">Quản lý Người dùng &amp; Tài khoản</h1>
+          <p className="text-sm text-slate-500 mt-1">Quản lý thông tin, phân quyền và trạng thái hoạt động của Người dùng và Quản trị viên</p>
         </div>
         <button 
           onClick={() => handleOpenModal()}
@@ -248,25 +268,25 @@ export default function UserManagement() {
           </div>
         </div>
         
-        {/* Card 2: Giảng viên */}
+        {/* Card 2: Người dùng */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Giảng viên</p>
-            <h3 className="text-2xl font-bold text-slate-900">{teacherCount}</h3>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Người dùng</p>
+            <h3 className="text-2xl font-bold text-slate-900">{regularUserCount}</h3>
           </div>
           <div className="bg-blue-50 p-2.5 rounded-xl text-blue-600">
-            <Shield size={20} />
+            <Users size={20} />
           </div>
         </div>
 
-        {/* Card 3: Sinh viên */}
+        {/* Card 3: Quản trị viên */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Sinh viên</p>
-            <h3 className="text-2xl font-bold text-slate-900">{studentCount}</h3>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Quản trị viên</p>
+            <h3 className="text-2xl font-bold text-slate-900">{adminCount}</h3>
           </div>
           <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600">
-            <GraduationCap size={20} />
+            <Shield size={20} />
           </div>
         </div>
 
@@ -286,7 +306,7 @@ export default function UserManagement() {
       <div className="space-y-4">
         {/* Tabs */}
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {['Tất cả', 'Giảng viên', 'Sinh viên', 'Cán bộ phòng'].map((tab) => (
+          {['Tất cả', 'Người dùng', 'Giảng viên', 'Quản trị viên'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -489,9 +509,9 @@ export default function UserManagement() {
                     value={formData.role}
                     onChange={(e) => setFormData({...formData, role: e.target.value as any})}
                   >
-                    <option value="Sinh viên">Sinh viên</option>
-                    <option value="Giảng viên">Giảng viên</option>
-                    <option value="Cán bộ phòng">Cán bộ quản lý</option>
+                    <option value="Người dùng">Sinh viên / Người dùng (Role: Participant)</option>
+                    <option value="Giảng viên">Giảng viên (Role: Lecturer)</option>
+                    <option value="Quản trị viên">Quản trị viên (Role: Admin)</option>
                   </select>
                 </div>
                 
@@ -561,6 +581,28 @@ export default function UserManagement() {
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     value={formData.department || ''}
                     onChange={(e) => setFormData({...formData, department: e.target.value})}
+                  />
+                </div>
+
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Mật khẩu {!editingUser && <span className="text-slate-400 font-normal">(Mặc định: password123)</span>}</label>
+                  <input 
+                    type="text" 
+                    placeholder="Mặc định: password123"
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    value={formData.password || ''}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  />
+                </div>
+
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Số điện thoại liên hệ</label>
+                  <input 
+                    type="tel" 
+                    placeholder="VD: 0912 345 678"
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    value={formData.phone || ''}
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   />
                 </div>
               </div>

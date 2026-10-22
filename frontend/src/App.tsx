@@ -8,7 +8,6 @@ import GoogleAuth from './components/GoogleAuth';
 import MicrosoftAuth from './components/MicrosoftAuth';
 import MainLayout from './components/MainLayout';
 import DashboardView from './components/DashboardView';
-import TimetableGrid from './components/TimetableGrid';
 import DevicesView from './components/DevicesView';
 import Analytics from './components/Analytics';
 import AuditLogViewer from './components/AuditLogViewer';
@@ -20,6 +19,9 @@ import StudentDashboard from './components/StudentDashboard';
 import { NotificationProvider } from './context/NotificationContext';
 import NotificationManagement from './components/NotificationManagement';
 import UserManagement from './components/UserManagement';
+import MeetingGoogleCalendar from './components/MeetingGoogleCalendar';
+import HRMIntegrationView from './components/HRMIntegrationView';
+import { useAuth } from './context/AuthContext';
 import './App.css';
 import './index.css';
 import './custom-ui.css';
@@ -50,14 +52,29 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 }
 
+function RootRedirect() {
+  const { user } = useAuth();
+  const token = sessionStorage.getItem('access_token') || localStorage.getItem('access_token') || sessionStorage.getItem('token');
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  const rawRole = typeof user?.role === 'object' ? (user.role as any)?.role_name : user?.role;
+  const role = (rawRole || '').toLowerCase();
+  if (role === 'admin' || role.includes('quản trị') || role.includes('cán bộ')) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <Navigate to="/user" replace />;
+}
+
 export default function App() {
-  const [currentUser] = React.useState({
+  const { user } = useAuth();
+  const currentUser = user || {
     id: 1,
     full_name: 'Quản trị viên',
     email: 'admin@ictu.edu.vn',
     role: 'ADMIN',
     department: { department_name: 'CNTT' }
-  });
+  };
 
   useEffect(() => {
     initializeSystemData();
@@ -112,9 +129,13 @@ export default function App() {
     window.addEventListener('storage', checkAccountLock);
     window.addEventListener('meetinghub_account_locked', checkAccountLock);
 
-    // Định kỳ 3 giây kiểm tra lại trạng thái thực tế từ backend
+    // Định kỳ 5 giây kiểm tra lại trạng thái thực tế từ backend khi đã đăng nhập
     const intervalId = setInterval(async () => {
       checkAccountLock();
+
+      if (window.location.pathname.includes('/login') || window.location.pathname.includes('/register') || window.location.pathname.includes('/forgot-password')) {
+        return;
+      }
 
       const token = sessionStorage.getItem('access_token') || localStorage.getItem('access_token') || sessionStorage.getItem('token');
       if (token) {
@@ -133,7 +154,7 @@ export default function App() {
           }
         }
       }
-    }, 3000);
+    }, 5000);
 
     return () => {
       clearInterval(intervalId);
@@ -147,16 +168,17 @@ export default function App() {
       <NotificationProvider>
         <Routes>
           <Route path="/" element={<MainLayout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route index element={<RootRedirect />} />
             <Route path="dashboard" element={<DashboardView />} />
-            <Route path="approvals" element={<ApprovalsView />} />
+            <Route path="calendar" element={<MeetingGoogleCalendar userProfile={currentUser} userRole="admin" />} />
+            <Route path="approvals" element={<Navigate to="/calendar" replace />} />
             <Route path="rooms" element={<RoomsView />} />
             <Route path="devices" element={<DevicesView />} />
-            <Route path="schedules" element={<TimetableGrid token={sessionStorage.getItem('access_token') || ''} userRole={currentUser.role} currentUserId={currentUser.id} />} />
+            <Route path="schedules" element={<Navigate to="/calendar" replace />} />
             <Route path="notifications" element={<NotificationManagement />} />
             <Route path="users" element={<UserManagement />} />
             <Route path="reports" element={<Analytics />} />
-            <Route path="bot-qr-settings" element={<div style={{ padding: '24px', fontSize: '18px', color: '#64748b' }}>Trang Cấu hình Chatbot & QR đang phát triển...</div>} />
+            <Route path="bot-qr-settings" element={<HRMIntegrationView />} />
             <Route path="system" element={<AuditLogViewer />} />
             <Route path="profile" element={<ProfileView />} />
             <Route path="*" element={<DashboardView />} />
@@ -164,8 +186,9 @@ export default function App() {
           <Route path="/login" element={<Login onLoginSuccess={() => { }} />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/user" element={<LecturerDashboard />} />
           <Route path="/lecturer" element={<LecturerDashboard />} />
-          <Route path="/student" element={<StudentDashboard />} />
+          <Route path="/student" element={<LecturerDashboard />} />
           <Route path="/auth/google" element={<GoogleAuth onLoginSuccess={() => { }} />} />
           <Route path="/auth/microsoft" element={<MicrosoftAuth onLoginSuccess={() => { }} />} />
         </Routes>

@@ -3,14 +3,14 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Video, Monitor, CalendarDays,
   MessageSquare, Users, Settings, LogOut, Search,
-  Bell, Check, X, FileCheck2, Bot, FileText, User
+  Bell, Check, X, FileCheck2, Bot, FileText, User, Clock
 } from 'lucide-react';
 import ChatbotWidget from './ChatbotWidget';
 import { NotificationDropdown } from './NotificationDropdown';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
-import { getNotificationsForRole, type SystemNotification } from '../utils/notificationService';
+import { getNotificationsForRole, getMeetingNotificationsForUser, type SystemNotification } from '../utils/notificationService';
 
 export default function MainLayout() {
   const navigate = useNavigate();
@@ -27,21 +27,32 @@ export default function MainLayout() {
     getNotificationsForRole('admin')
   );
 
-  const refreshNotifs = () => {
-    setNotifications(getNotificationsForRole('admin'));
+  const refreshNotifs = async () => {
+    const staticNotifs = getNotificationsForRole('admin');
+    try {
+      const res = await api.get('/meetings');
+      if (Array.isArray(res.data)) {
+        const dyn = getMeetingNotificationsForUser(res.data, userProfile);
+        setNotifications([...dyn, ...staticNotifs]);
+        return;
+      }
+    } catch (e) { }
+    setNotifications(staticNotifs);
   };
 
   useEffect(() => {
     refreshNotifs();
     window.addEventListener('storage', refreshNotifs);
     window.addEventListener('appDataSync', refreshNotifs);
+    window.addEventListener('meeting-updated', refreshNotifs);
     window.addEventListener('system-notification-updated', refreshNotifs);
     return () => {
       window.removeEventListener('storage', refreshNotifs);
       window.removeEventListener('appDataSync', refreshNotifs);
+      window.removeEventListener('meeting-updated', refreshNotifs);
       window.removeEventListener('system-notification-updated', refreshNotifs);
     };
-  }, []);
+  }, [userProfile?.id, userProfile?.email]);
 
   // Click outside listener
   useEffect(() => {
@@ -60,10 +71,16 @@ export default function MainLayout() {
   }, []);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
-    sessionStorage.removeItem('meetinghub_token');
-    sessionStorage.removeItem('meetinghub_user');
+    sessionStorage.clear();
+    localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('meetinghub_user');
+    localStorage.removeItem('meetinghub_room_requests');
+    localStorage.removeItem('room_bookings');
+    localStorage.removeItem('system_rooms');
+    localStorage.removeItem('admin_rooms');
     setShowUserDropdown(false);
     window.location.href = '/login';
   };
@@ -119,10 +136,10 @@ export default function MainLayout() {
 
   const menuGroups = [
     {
-      group: 'ĐIỀU HÀNH & PHÊ DUYỆT',
+      group: 'ĐIỀU HÀNH & LỊCH HỌP',
       items: [
         { id: '/dashboard', label: 'Trang tổng quan', icon: <LayoutDashboard size={20} /> },
-        { id: '/approvals', label: 'Phê duyệt yêu cầu', icon: <FileCheck2 size={20} />, badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined },
+        { id: '/calendar', label: 'Lịch họp (Google Calendar)', icon: <CalendarDays size={20} /> },
       ]
     },
     {
@@ -130,7 +147,6 @@ export default function MainLayout() {
       items: [
         { id: '/rooms', label: 'Quản lý phòng họp', icon: <Video size={20} /> },
         { id: '/devices', label: 'Quản lý thiết bị', icon: <Monitor size={20} /> },
-        { id: '/schedules', label: 'Lịch họp toàn trường', icon: <CalendarDays size={20} /> },
       ]
     },
     {
@@ -144,7 +160,7 @@ export default function MainLayout() {
     {
       group: 'CẤU HÌNH HỆ THỐNG',
       items: [
-        { id: '/bot-qr-settings', label: 'Cấu hình Chatbot & QR', icon: <Bot size={20} /> },
+        { id: '/bot-qr-settings', label: 'Tích hợp HRM/ERP & Bot', icon: <Bot size={20} /> },
         { id: '/system', label: 'Cài đặt hệ thống', icon: <Settings size={20} /> },
       ]
     },
@@ -232,12 +248,12 @@ export default function MainLayout() {
                       <span style={{ fontSize: '14px', fontWeight: isActive ? '600' : '500', flex: 1 }}>
                         {item.label}
                       </span>
-                      {item.badge && (
+                      {(item as any).badge && (
                         <span style={{
                           backgroundColor: '#ef4444', color: 'white', fontSize: '10px', fontWeight: 'bold',
                           padding: '2px 6px', borderRadius: '10px'
                         }}>
-                          {item.badge}
+                          {(item as any).badge}
                         </span>
                       )}
                     </button>
@@ -348,7 +364,7 @@ export default function MainLayout() {
                 </button>
                 {/* Dropdown Thông báo */}
                 {showNotif && (
-                  <NotificationDropdown onClose={() => setShowNotif(false)} role="admin" />
+                  <NotificationDropdown onClose={() => setShowNotif(false)} role="admin" userProfile={userProfile} />
                 )}
               </div>
 

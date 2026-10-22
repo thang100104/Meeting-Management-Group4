@@ -228,7 +228,90 @@ export const addNotification = (notif: {
   return newNotif;
 };
 
-export const markAllAsReadForRole = (role: UserRole | string): void => {
+export const getMeetingNotificationsForUser = (meetings: any[], userProfile: any): SystemNotification[] => {
+  if (!Array.isArray(meetings) || !userProfile) return [];
+  const uid = userProfile.id || userProfile.user_id;
+  const email = (userProfile.email || '').toLowerCase();
+  const readIds = getStorage<string[]>('read_meeting_notif_ids', []);
+  const now = (() => {
+    try {
+      const d = new Date();
+      return new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    } catch {
+      return new Date();
+    }
+  })();
+  const notifs: SystemNotification[] = [];
+
+  meetings.forEach((m: any) => {
+    if (['CANCELLED', 'REJECTED', 'COMPLETED'].includes(m.status)) return;
+    const st = new Date(m.start_time);
+    const et = new Date(m.end_time);
+    const isInProgress = now >= st && now <= et;
+    const diffMin = Math.round((st.getTime() - now.getTime()) / (1000 * 60));
+    const isUpcoming = diffMin > 0 && diffMin <= 120;
+
+    const isOrganizer = m.organizer_id === uid || (m.organizer?.email && m.organizer.email.toLowerCase() === email);
+    const participantRecord = Array.isArray(m.participants) && m.participants.find((p: any) =>
+      p.user_id === uid || (p.user?.email && p.user.email.toLowerCase() === email)
+    );
+
+    // 1. Lời mời tham gia cuộc họp (dành cho khách mời chưa xác nhận)
+    if (participantRecord && participantRecord.rsvp_status === 'PENDING') {
+      const id = `invitation_${m.meeting_id}`;
+      notifs.push({
+        id,
+        title: `Lời mời tham gia: "${m.title}"`,
+        content: `Bạn được mời tham gia cuộc họp "${m.title}" tại ${m.room?.room_name || 'Phòng họp'} (${st.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${et.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, ${st.toLocaleDateString('vi-VN')}). Người mời: ${m.organizer?.full_name || 'Chủ trì'}.`,
+        createdAt: m.created_at || m.start_time,
+        isRead: readIds.includes(id),
+        targetRole: 'all',
+        targetEmail: email,
+        senderName: m.organizer?.full_name || 'Chủ trì',
+        senderRole: 'lecturer',
+        type: 'schedule'
+      });
+    }
+
+    // 2. Cuộc họp đang diễn ra (cho cả người tổ chức và người tham gia)
+    if ((isOrganizer || participantRecord) && isInProgress) {
+      const id = `inprogress_${m.meeting_id}`;
+      notifs.push({
+        id,
+        title: `🟢 Cuộc họp đang diễn ra: "${m.title}"`,
+        content: `Phòng ${m.room?.room_name || 'họp'} đang diễn ra cuộc họp "${m.title}" (${st.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${et.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`,
+        createdAt: m.start_time,
+        isRead: readIds.includes(id),
+        targetRole: 'all',
+        targetEmail: email,
+        senderName: m.organizer?.full_name || 'Hệ thống',
+        senderRole: 'lecturer',
+        type: 'booking'
+      });
+    }
+
+    // 3. Cuộc họp sắp diễn ra trong 2 giờ
+    if ((isOrganizer || participantRecord) && isUpcoming) {
+      const id = `upcoming_${m.meeting_id}`;
+      notifs.push({
+        id,
+        title: `🔔 Sắp diễn ra sau ${diffMin} phút: "${m.title}"`,
+        content: `Cuộc họp "${m.title}" sẽ bắt đầu lúc ${st.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} tại ${m.room?.room_name || 'Google Meet'}.`,
+        createdAt: m.start_time,
+        isRead: readIds.includes(id),
+        targetRole: 'all',
+        targetEmail: email,
+        senderName: m.organizer?.full_name || 'Hệ thống',
+        senderRole: 'lecturer',
+        type: 'schedule'
+      });
+    }
+  });
+
+  return notifs;
+};
+
+export const markAllAsReadForRole = (role: UserRole | string, additionalIds: (string | number)[] = []): void => {
   const normalizedRole: UserRole = 
     role === 'admin' || role === 'ADMIN' || role === 'quản trị viên' ? 'admin' :
     role === 'lecturer' || role === 'LECTURER' || role === 'giảng viên' ? 'lecturer' : 'student';
@@ -242,12 +325,27 @@ export const markAllAsReadForRole = (role: UserRole | string): void => {
   });
 
   setStorage('system_notifications', updated);
+
+  if (additionalIds && additionalIds.length > 0) {
+    const readIds = getStorage<string[]>('read_meeting_notif_ids', []);
+    const merged = Array.from(new Set([...readIds, ...additionalIds.map(String)]));
+    setStorage('read_meeting_notif_ids', merged);
+  }
+
   window.dispatchEvent(new Event('system-notification-updated'));
 };
 
 export const markSingleAsRead = (id: string | number): void => {
-  const all = getAllNotifications();
-  const updated = all.map(n => n.id === id ? { ...n, isRead: true } : n);
-  setStorage('system_notifications', updated);
+  const strId = String(id);
+  if (strId.startsWith('invitation_') || strId.startsWith('inprogress_') || strId.startsWith('upcoming_')) {
+    const readIds = getStorage<string[]>('read_meeting_notif_ids', []);
+    if (!readIds.includes(strId)) {
+      setStorage('read_meeting_notif_ids', [...readIds, strId]);
+    }
+  } else {
+    const all = getAllNotifications();
+    const updated = all.map(n => n.id === id ? { ...n, isRead: true } : n);
+    setStorage('system_notifications', updated);
+  }
   window.dispatchEvent(new Event('system-notification-updated'));
 };

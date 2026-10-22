@@ -25,11 +25,19 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Token hết hạn hoặc không hợp lệ -> Xóa token và bắt đăng nhập lại
-      sessionStorage.removeItem('access_token');
-      sessionStorage.removeItem('token');
-      sessionStorage.removeItem('user');
-      window.dispatchEvent(new Event('storage')); // Gửi sự kiện để UI cập nhật
+      const isLoginRequest = error.config?.url?.includes('/auth/login');
+      if (!isLoginRequest) {
+        // Xóa sạch token hết hạn ở cả sessionStorage và localStorage
+        sessionStorage.removeItem('access_token');
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('meetinghub_user');
+        // TUYỆT ĐỐI KHÔNG dispatchEvent 'storage' ở đây vì sẽ tạo vòng lặp vô tận (infinite loop) gọi lại API
+      }
     } else if (error.response && error.response.status === 403) {
       const detail = error.response.data?.detail || '';
       if (typeof detail === 'string' && (detail.includes('tạm khóa') || detail.includes('vô hiệu hóa'))) {

@@ -26,21 +26,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([
     {
       id: 'notif-1',
-      title: 'Yêu cầu đặt phòng mới',
-      description: 'Giảng viên Nguyễn Văn A gửi yêu cầu đặt Phòng A1 (Dạy bù Lập trình Web)',
+      title: 'Lịch họp mới được tạo',
+      description: 'Giảng viên Nguyễn Văn A đã đặt Phòng A1 (Dạy bù Lập trình Web)',
       time: '5 phút trước',
       type: 'booking_request',
       isRead: false,
-      link: '/approvals'
+      link: '/calendar'
     },
     {
       id: 'notif-2',
-      title: 'Yêu cầu đặt phòng mới',
-      description: 'CLB Âm nhạc (Trần Thị B) gửi yêu cầu đặt Phòng C2',
+      title: 'Lịch họp mới được tạo',
+      description: 'CLB Âm nhạc (Trần Thị B) đã đặt Phòng C2',
       time: '20 phút trước',
       type: 'booking_request',
       isRead: false,
-      link: '/approvals'
+      link: '/calendar'
     },
     {
       id: 'notif-3',
@@ -53,12 +53,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     },
     {
       id: 'notif-4',
-      title: 'Yêu cầu đặt phòng mới',
-      description: 'Sinh viên Lê Hoàng C gửi yêu cầu đặt Phòng D1 (Họp nhóm đồ án)',
+      title: 'Lịch họp mới được tạo',
+      description: 'Sinh viên Lê Hoàng C đã đặt Phòng D1 (Họp nhóm đồ án)',
       time: '2 giờ trước',
       type: 'booking_request',
       isRead: false,
-      link: '/approvals'
+      link: '/calendar'
     },
     {
       id: 'notif-5',

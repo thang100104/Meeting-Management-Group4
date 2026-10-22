@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Search, Users, Video, AlertTriangle, Monitor, X, Filter, Package, User, BookOpen, FileText, Info, BellRing, CheckCircle2 } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Clock, MapPin, Search, Users, Video, AlertTriangle, Monitor, X, Filter, Package, User, BookOpen, FileText, Info, BellRing, CheckCircle2, MessageSquare } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../services/api';
 import { getStorage, useDataSync } from '../utils/syncHelper';
@@ -19,22 +19,43 @@ interface ScheduleEvent {
 export default function LecturerSchedule({ userProfile, navigateToTab }: { userProfile: any, navigateToTab: (tab: string) => void }) {
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [viewMode, setViewMode] = useState<'Tuần' | 'Ngày' | 'Timeline'>('Tuần');
-  const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 8, 30));
+  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [filterType, setFilterType] = useState<'Tất cả' | 'Lịch giảng dạy' | 'Lịch họp / Hội thảo'>('Tất cả');
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
 
   useEffect(() => {
     loadSchedule();
+
+    const handleUpdate = () => loadSchedule();
+    window.addEventListener('meeting-updated', handleUpdate);
+    window.addEventListener('system-notification-updated', handleUpdate);
+    window.addEventListener('appDataSync', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('meeting-updated', handleUpdate);
+      window.removeEventListener('system-notification-updated', handleUpdate);
+      window.removeEventListener('appDataSync', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, [userProfile]);
 
   const loadSchedule = async () => {
     try {
       const response = await api.get('/meetings');
       const allMeetings = response.data || [];
-      const approvedReqs = allMeetings.filter((m: any) => 
-        ['CONFIRMED', 'SCHEDULED', 'APPROVED'].includes(m.status) &&
-        (m.organizer_id === userProfile?.id || m.organizer?.email === userProfile?.email)
-      );
+      const currentEmail = (userProfile?.email || '').toLowerCase();
+      const currentId = userProfile?.id || userProfile?.user_id;
+
+      const approvedReqs = allMeetings.filter((m: any) => {
+        if (!['CONFIRMED', 'SCHEDULED', 'APPROVED'].includes(m.status)) return false;
+        const isOrganizer = m.organizer_id === currentId || (m.organizer?.email && m.organizer.email.toLowerCase() === currentEmail);
+        const isParticipant = Array.isArray(m.participants) && m.participants.some((p: any) => 
+          p.user_id === currentId || 
+          (p.user?.email && p.user.email.toLowerCase() === currentEmail)
+        );
+        return isOrganizer || isParticipant;
+      });
 
       const baseEvents: ScheduleEvent[] = [];
       approvedReqs.forEach((m: any) => {
@@ -446,12 +467,12 @@ export default function LecturerSchedule({ userProfile, navigateToTab }: { userP
                   <button 
                     onClick={() => {
                       setSelectedEvent(null);
-                      navigateToTab('report-issue');
+                      navigateToTab('student-chat');
                     }}
-                    style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                    className="hover:bg-red-50 transition-colors"
+                    style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #bfdbfe', backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                    className="hover:bg-blue-100 transition-colors"
                   >
-                    <AlertTriangle size={18} /> Báo sự cố phòng này
+                    <MessageSquare size={18} /> Nhắn tin Admin hỗ trợ phòng này
                   </button>
                 </div>
               </div>

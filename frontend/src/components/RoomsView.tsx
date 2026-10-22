@@ -30,6 +30,7 @@ const standardDevices = [
 
 interface Room {
   id: string;
+  room_id?: number | string;
   name: string;
   building: string;
   floor: string;
@@ -38,6 +39,7 @@ interface Room {
   status: string; // 'Sẵn sàng' | 'Đang họp' | 'Bảo trì' (Base state saved in DB)
   image: string;
   equipment: string[];
+  restrictions?: any[];
 }
 
 interface BookingRequest {
@@ -131,7 +133,10 @@ const TIME_SLOTS = [
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80';
 
-const getTodayString = () => new Date().toISOString().split('T')[0];
+const getTodayString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 const getCurrentTimeString = () => {
   const now = new Date();
@@ -193,6 +198,7 @@ const mapApiRoomToFrontend = (apiRoom: any): Room => {
 
   return {
     id: String(apiRoom.room_id),
+    room_id: apiRoom.room_id,
     name: apiRoom.room_name || apiRoom.name || '',
     building: building || locationStr || '',
     floor: floor || 'Tầng 1',
@@ -200,7 +206,8 @@ const mapApiRoomToFrontend = (apiRoom: any): Room => {
     type: apiRoom.description || 'Meeting',
     status,
     image: apiRoom.image_url || '',
-    equipment
+    equipment,
+    restrictions: apiRoom.restrictions || []
   };
 };
 
@@ -222,53 +229,42 @@ const mapFrontendRoomToApi = (room: Room) => {
 
 // Fetch rooms from backend API
 const fetchRoomsFromAPI = async (): Promise<Room[]> => {
-  const token = getToken();
-  if (!token) return [];
   try {
-    const res = await fetch(`${API_BASE}/rooms`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) {
-      return data.map(mapApiRoomToFrontend);
+    const res = await api.get('/rooms');
+    const data = res.data;
+    if (Array.isArray(data)) {
+      const mapped = data.map(mapApiRoomToFrontend);
+      // Deduplicate by ID
+      const map = new Map<string, Room>();
+      mapped.forEach((r: Room) => {
+        if (r && r.id && !map.has(String(r.id))) {
+          map.set(String(r.id), r);
+        }
+      });
+      return Array.from(map.values());
     }
     return [];
-  } catch {
+  } catch (err) {
+    console.warn("Lỗi fetch rooms từ API", err);
     return [];
   }
 };
 
 // Save room to backend API (create or update)
 const saveRoomToAPI = async (room: Room, isNew: boolean): Promise<any> => {
-  const token = getToken();
-  if (!token) throw new Error('No token');
   const payload = mapFrontendRoomToApi(room);
-  const url = isNew ? `${API_BASE}/rooms` : `${API_BASE}/rooms/${room.id}`;
-  const res = await fetch(url, {
-    method: isNew ? 'POST' : 'PUT',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload)
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `HTTP ${res.status}`);
+  if (isNew) {
+    const res = await api.post('/rooms', payload);
+    return res.data;
+  } else {
+    const res = await api.put(`/rooms/${room.id}`, payload);
+    return res.data;
   }
-  return res.json();
 };
 
 // Delete room via API
 const deleteRoomFromAPI = async (roomId: string): Promise<void> => {
-  const token = getToken();
-  if (!token) throw new Error('No token');
-  const res = await fetch(`${API_BASE}/rooms/${roomId}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `HTTP ${res.status}`);
-  }
+  await api.delete(`/rooms/${roomId}`);
 };
 
 // ----------------------------------------------------------------------
@@ -314,7 +310,11 @@ const getRoomStatusAndCurrentEvent = (room: Room, bookingRequests: BookingReques
   const currentTime = getCurrentTimeString();
 
   const activeBooking = bookingRequests.find(req => {
-    if ((req.roomId === room.id || req.roomName === room.name) && req.date === today && req.status === 'approved' && req.timeSlot) {
+    const isRoomMatch = String(req.roomId) === String(room.id) || 
+      (room.room_id && String(req.roomId) === String(room.room_id)) || 
+      (req.roomName && room.name && req.roomName.trim().toLowerCase() === room.name.trim().toLowerCase());
+
+    if (isRoomMatch && req.date === today && (req.status === 'approved' || (req.status as any) === 'SCHEDULED') && req.timeSlot) {
       const [start, end] = req.timeSlot.split(' - ');
       return currentTime >= start && currentTime <= end;
     }
@@ -349,44 +349,82 @@ const RoomsView: React.FC = () => {
     if (saved) {
       try { 
         const parsed: Room[] = JSON.parse(saved);
-        
-        // Automatic Data Migration: check for legacy fields or missing images
-        const hasLegacyData = parsed.some(r => 
-          !r.image || 
-          r.image.trim() === '' || 
-          r.equipment.some(eq => !standardDevices.includes(eq))
-        );
-        
-        if (hasLegacyData) {
-          console.warn("Detected old room data format. Cleaning up localStorage and migrating to new standards...");
-          localStorage.setItem('admin_rooms', JSON.stringify(mockRooms));
-          return mockRooms;
+        if (Array.isArray(parsed)) {
+          const map = new Map<string, Room>();
+          parsed.forEach(r => {
+            if (r && r.id && !map.has(String(r.id))) {
+              map.set(String(r.id), r);
+            }
+          });
+          return Array.from(map.values());
         }
-        
-        return parsed; 
-      } catch (e) { 
-        return mockRooms; 
-      }
+      } catch (e) { }
     }
-    return mockRooms;
+    return [];
   });
 
   const [bookingRequests, setBookingRequests] = useState<BookingRequest[]>(getInitialBookings);
   const [deviceList, setDeviceList] = useState<any[]>(getInitialDevices);
 
-  // Persist rooms to localStorage whenever they change (cache for same-tab offline)
+  // Persist unique rooms to localStorage
   useEffect(() => {
-    localStorage.setItem('admin_rooms', JSON.stringify(rooms));
+    const map = new Map<string, Room>();
+    rooms.forEach(r => {
+      if (r && r.id && !map.has(String(r.id))) {
+        map.set(String(r.id), r);
+      }
+    });
+    localStorage.setItem('admin_rooms', JSON.stringify(Array.from(map.values())));
   }, [rooms]);
 
   // Fetch rooms from backend API + set up polling for real-time sync
   useEffect(() => {
     const loadFromAPI = async () => {
       try {
-        const apiRooms = await fetchRoomsFromAPI();
-        // Cập nhật state bất kể mảng rỗng (khi xóa hết phòng) hay có dữ liệu
-        setRooms(apiRooms);
-        localStorage.setItem('admin_rooms', JSON.stringify(apiRooms));
+        const [apiRooms, meetingsRes] = await Promise.allSettled([
+          fetchRoomsFromAPI(),
+          api.get('/meetings')
+        ]);
+
+        if (apiRooms.status === 'fulfilled') {
+          const map = new Map<string, Room>();
+          apiRooms.value.forEach(r => {
+            if (r && r.id && !map.has(String(r.id))) {
+              map.set(String(r.id), r);
+            }
+          });
+          const cleanRooms = Array.from(map.values());
+          setRooms(cleanRooms);
+          localStorage.setItem('admin_rooms', JSON.stringify(cleanRooms));
+        }
+
+        if (meetingsRes.status === 'fulfilled' && Array.isArray(meetingsRes.value.data)) {
+          const mappedReqs: BookingRequest[] = meetingsRes.value.data
+            .filter((m: any) => !['CANCELLED', 'REJECTED'].includes(m.status))
+            .map((m: any) => {
+              const st = new Date(m.start_time);
+              const et = new Date(m.end_time);
+              const yyyy = st.getFullYear();
+              const mm = String(st.getMonth() + 1).padStart(2, '0');
+              const dd = String(st.getDate()).padStart(2, '0');
+              const sH = String(st.getHours()).padStart(2, '0');
+              const sM = String(st.getMinutes()).padStart(2, '0');
+              const eH = String(et.getHours()).padStart(2, '0');
+              const eM = String(et.getMinutes()).padStart(2, '0');
+              return {
+                id: String(m.meeting_id),
+                roomId: String(m.room_id),
+                roomName: m.room?.room_name || '',
+                requesterName: m.organizer?.full_name || 'Người dùng',
+                requesterRole: 'Giảng viên',
+                title: m.title || 'Cuộc họp',
+                date: `${yyyy}-${mm}-${dd}`,
+                timeSlot: `${sH}:${sM} - ${eH}:${eM}`,
+                status: 'approved' as const
+              };
+            });
+          setBookingRequests(mappedReqs);
+        }
       } catch (err) {
         console.error("Lỗi khi tải danh sách phòng từ API", err);
       }
@@ -400,15 +438,23 @@ const RoomsView: React.FC = () => {
     // Also listen for localStorage changes (same-origin cross-tab sync)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'meetinghub_room_requests' && e.newValue) {
-        setBookingRequests(JSON.parse(e.newValue));
+        try { setBookingRequests(JSON.parse(e.newValue)); } catch { }
       }
       if (e.key === 'admin_devices' && e.newValue) {
-        setDeviceList(JSON.parse(e.newValue));
+        try { setDeviceList(JSON.parse(e.newValue)); } catch { }
       }
       if (e.key === 'admin_rooms' && e.newValue) {
         try {
           const parsedRooms = JSON.parse(e.newValue);
-          setRooms(parsedRooms);
+          if (Array.isArray(parsedRooms)) {
+            const map = new Map<string, Room>();
+            parsedRooms.forEach(r => {
+              if (r && r.id && !map.has(String(r.id))) {
+                map.set(String(r.id), r);
+              }
+            });
+            setRooms(Array.from(map.values()));
+          }
         } catch { }
       }
     };
@@ -464,11 +510,47 @@ const RoomsView: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  // US #21: Quản lý giới hạn quyền đặt phòng
+  const [restrictionRoleId, setRestrictionRoleId] = useState<number>(3); // Mặc định: 3 - PARTICIPANT (Sinh viên)
+  const [restrictionNotes, setRestrictionNotes] = useState<string>('Chỉ dành cho cán bộ giảng viên và Ban giám hiệu');
+  const [roomRestrictions, setRoomRestrictions] = useState<any[]>([]);
+
   const handleOpenEdit = (room: Room) => {
     setModalMode('edit');
     setFormData(room);
+    setRoomRestrictions(room.restrictions || []);
     setImageInputMode('preset');
     setIsModalOpen(true);
+  };
+
+  const handleAddRestriction = async () => {
+    if (!formData.id) return;
+    try {
+      const res = await api.post(`/rooms/${formData.id}/restrictions`, {
+        role_id: restrictionRoleId,
+        notes: restrictionNotes
+      });
+      const newRestriction = res.data;
+      const updated = [...roomRestrictions, newRestriction];
+      setRoomRestrictions(updated);
+      setRooms(prev => prev.map(r => r.id === formData.id ? { ...r, restrictions: updated } : r));
+      alert("✓ Đã thêm giới hạn quyền đặt phòng thành công (US #21)!");
+    } catch (err: any) {
+      alert(`[Lỗi]: ${err.response?.data?.detail || err.message || 'Không thể thêm giới hạn quyền!'}`);
+    }
+  };
+
+  const handleDeleteRestriction = async (restrictionId: number) => {
+    if (!formData.id) return;
+    try {
+      await api.delete(`/rooms/${formData.id}/restrictions/${restrictionId}`);
+      const updated = roomRestrictions.filter(r => r.restriction_id !== restrictionId);
+      setRoomRestrictions(updated);
+      setRooms(prev => prev.map(r => r.id === formData.id ? { ...r, restrictions: updated } : r));
+      alert("✓ Đã gỡ bỏ giới hạn quyền đặt phòng thành công!");
+    } catch (err: any) {
+      alert(`[Lỗi]: ${err.response?.data?.detail || err.message || 'Không thể gỡ bỏ giới hạn!'}`);
+    }
   };
 
   const handleQuickStatusChange = async (id: string, status: string) => {
@@ -532,10 +614,15 @@ const RoomsView: React.FC = () => {
     }
   };
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleSaveRoom = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
+    const isNew = modalMode === 'add';
     const roomToSave: Room = {
-      id: formData.id || `R0${rooms.length + 1}`,
+      id: formData.id || '',
       name: formData.name || 'Phòng mới',
       building: formData.building || 'Tòa A',
       floor: formData.floor || 'Tầng 1',
@@ -546,40 +633,47 @@ const RoomsView: React.FC = () => {
       equipment: formData.equipment || [],
     };
 
-    const isNew = modalMode === 'add';
-    const prevRooms = rooms;
-
-    // Optimistic update
-    if (isNew) {
-      setRooms(prev => [roomToSave, ...prev]);
-    } else {
-      setRooms(prev => prev.map(r => r.id === roomToSave.id ? roomToSave : r));
-    }
-    setIsModalOpen(false);
-
-    // Persist to backend API
+    setIsSubmitting(true);
     try {
-      const apiResult = await saveRoomToAPI(roomToSave, isNew);
-      // If creating new room, update local id with server-generated id
-      if (isNew && apiResult) {
-        const serverRoom = mapApiRoomToFrontend(apiResult);
-        setRooms(prev => prev.map(r => r.id === roomToSave.id ? serverRoom : r));
-        localStorage.setItem('admin_rooms', JSON.stringify(
-          prevRooms.map(r => r.id === roomToSave.id ? serverRoom : r)
-        ));
-      }
+      await saveRoomToAPI(roomToSave, isNew);
+      setIsModalOpen(false);
+
+      // Tải lại danh sách chuẩn xác từ Backend API để loại bỏ hoàn toàn khả năng nhân đôi
+      const updatedRooms = await fetchRoomsFromAPI();
+      const map = new Map<string, Room>();
+      updatedRooms.forEach(r => {
+        if (r && r.id && !map.has(String(r.id))) {
+          map.set(String(r.id), r);
+        }
+      });
+      const cleanList = Array.from(map.values());
+      setRooms(cleanList);
+      localStorage.setItem('admin_rooms', JSON.stringify(cleanList));
+
       window.dispatchEvent(new Event('appDataSync'));
       window.dispatchEvent(new Event('roomsUpdated'));
       window.dispatchEvent(new Event('storage'));
     } catch (err: any) {
       console.error("Failed to save room via API:", err.message);
-      // Revert optimistic update on failure
-      setRooms(prevRooms);
-      alert(`Lỗi lưu phòng: ${err.message}`);
+      const detail = err.response?.data?.detail || err.message;
+      alert(`Lỗi lưu phòng: ${detail}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const filteredRooms = rooms.filter(room => {
+  // Khử trùng lặp ID trước khi lọc và hiển thị ra UI
+  const uniqueRoomsList = React.useMemo(() => {
+    const map = new Map<string, Room>();
+    rooms.forEach(r => {
+      if (r && r.id && !map.has(String(r.id))) {
+        map.set(String(r.id), r);
+      }
+    });
+    return Array.from(map.values());
+  }, [rooms]);
+
+  const filteredRooms = uniqueRoomsList.filter(room => {
     const { status: dynamicStatus } = getRoomStatusAndCurrentEvent(room, bookingRequests);
 
     const matchesSearch = room.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -722,11 +816,31 @@ const RoomsView: React.FC = () => {
                       <span style={{ fontSize: '12px', fontFamily: 'monospace', backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '6px' }}>{room.id}</span>
                     </div>
                     
-                    <div style={{ display: 'flex', alignItems: 'center', fontSize: '14px', color: '#64748b', gap: '8px', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', fontSize: '14px', color: '#64748b', gap: '8px', marginBottom: '8px' }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><MapPin size={14} /> {room.floor} - {room.building}</span>
                       <span style={{ color: '#e2e8f0' }}>|</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Users size={14} /> {room.capacity} người</span>
                     </div>
+
+                    {/* US #21: Huy hiệu giới hạn quyền đặt phòng */}
+                    {room.restrictions && room.restrictions.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                        {room.restrictions.map((res: any) => (
+                          <span 
+                            key={res.restriction_id} 
+                            style={{ 
+                              display: 'inline-flex', alignItems: 'center', gap: '4px', 
+                              fontSize: '11px', fontWeight: 'bold', color: '#b91c1c', 
+                              backgroundColor: '#fef2f2', border: '1px solid #fecaca', 
+                              padding: '2px 8px', borderRadius: '6px' 
+                            }}
+                            title={res.notes || "Giới hạn quyền đặt phòng"}
+                          >
+                            🔒 Hạn chế: {res.role?.role_name === 'PARTICIPANT' || res.role_id === 3 ? 'Sinh viên' : (res.role?.role_name || `Role ${res.role_id}`)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     <div style={{ padding: '12px', borderRadius: '12px', border: '1px solid', fontSize: '14px', ...(dynamicStatus === 'Đang họp' ? { backgroundColor: '#f0fdf4', borderColor: '#dcfce7', color: '#166534' } : { backgroundColor: '#f8fafc', borderColor: '#f1f5f9', color: '#475569' }) }}>
                       {dynamicStatus === 'Đang họp' && currentEvent ? (
@@ -929,8 +1043,15 @@ const RoomsView: React.FC = () => {
                 </div>
                 
                 <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#334155', marginBottom: '6px' }}>Mã phòng *</label>
-                  <input required type="text" value={formData.id} onChange={e => setFormData({...formData, id: e.target.value})} placeholder="VD: R07" disabled={modalMode === 'edit'} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px', backgroundColor: modalMode === 'edit' ? '#f1f5f9' : '#fff' }} />
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#334155', marginBottom: '6px' }}>
+                    Mã phòng {modalMode === 'edit' ? '(Cố định)' : '(Tự động cấp)'}
+                  </label>
+                  <input 
+                    type="text" 
+                    value={modalMode === 'edit' ? formData.id : 'Hệ thống tự động sinh mã'} 
+                    disabled 
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px', backgroundColor: '#f1f5f9', color: '#64748b' }} 
+                  />
                 </div>
                 
                 <div>
@@ -961,6 +1082,83 @@ const RoomsView: React.FC = () => {
                     <option value="Bảo trì">Bảo trì (Khóa phòng)</option>
                   </select>
                 </div>
+
+                {/* US #21: CẤU HÌNH GIỚI HẠN QUYỀN ĐẶT PHÒNG THEO VAI TRÒ */}
+                {modalMode === 'edit' && (
+                  <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <label style={{ fontSize: '14px', fontWeight: 'bold', color: '#0f172a' }}>
+                        🔒 Giới hạn quyền đặt phòng theo vai trò (US #21)
+                      </label>
+                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>
+                        Chính sách bảo mật &amp; phân quyền RBAC
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                      Chỉ định các vai trò không được phép đặt phòng này (ví dụ phòng Ban Giám hiệu hoặc Hội trường VIP chỉ dành riêng cho Cán bộ Giảng viên):
+                    </p>
+
+                    {/* Danh sách các giới hạn hiện tại */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                      {roomRestrictions.length > 0 ? roomRestrictions.map((res: any) => (
+                        <div 
+                          key={res.restriction_id} 
+                          style={{ 
+                            display: 'flex', alignItems: 'center', gap: '8px', 
+                            backgroundColor: '#fef2f2', border: '1px solid #fecaca', 
+                            borderRadius: '8px', padding: '6px 12px', fontSize: '12px', color: '#991b1b' 
+                          }}
+                        >
+                          <div>
+                            <strong>Cấm vai trò:</strong> {res.role?.role_name === 'PARTICIPANT' || res.role_id === 3 ? 'Sinh viên / Tham dự' : res.role?.role_name || `Role ${res.role_id}`}
+                            {res.notes && <span style={{ color: '#b91c1c', marginLeft: '4px' }}>({res.notes})</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRestriction(res.restriction_id)}
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc2626', fontWeight: 'bold', padding: '2px' }}
+                            title="Xóa giới hạn này"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )) : (
+                        <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                          Phòng này hiện mở cho tất cả vai trò, không có giới hạn nào.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Form thêm giới hạn mới */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', backgroundColor: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <select 
+                        value={restrictionRoleId}
+                        onChange={(e) => setRestrictionRoleId(Number(e.target.value))}
+                        style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px', outline: 'none', backgroundColor: '#fff', cursor: 'pointer' }}
+                      >
+                        <option value={3}>Cấm Sinh viên (PARTICIPANT)</option>
+                        <option value={2}>Cấm Giảng viên (LECTURER)</option>
+                      </select>
+
+                      <input 
+                        type="text" 
+                        placeholder="Lý do / Ghi chú giới hạn..."
+                        value={restrictionNotes}
+                        onChange={(e) => setRestrictionNotes(e.target.value)}
+                        style={{ flex: 1, minWidth: '200px', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px', outline: 'none' }}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleAddRestriction}
+                        style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: '#dc2626', color: '#fff', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}
+                        className="hover:bg-red-700"
+                      >
+                        + Thêm giới hạn
+                      </button>
+                    </div>
+                  </div>
+                )}
                 
                 {/* TRANG THIẾT BỊ (GRID CARDS ĐẸP) */}
                 <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
@@ -1070,8 +1268,8 @@ const RoomsView: React.FC = () => {
                   <button type="button" onClick={() => setIsModalOpen(false)} style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: '500', cursor: 'pointer', fontSize: '14px' }}>
                     Hủy bỏ
                   </button>
-                  <button type="submit" style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '500', cursor: 'pointer', fontSize: '14px' }}>
-                    {modalMode === 'add' ? 'Xác nhận thêm' : 'Lưu thay đổi'}
+                  <button type="submit" disabled={isSubmitting} style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '500', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontSize: '14px', opacity: isSubmitting ? 0.7 : 1 }}>
+                    {isSubmitting ? 'Đang lưu...' : (modalMode === 'add' ? 'Xác nhận thêm' : 'Lưu thay đổi')}
                   </button>
                 </div>
               </div>

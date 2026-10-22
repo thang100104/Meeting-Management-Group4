@@ -94,6 +94,118 @@ def create_room(
     db.refresh(room)
     return room
 
+@router.get("/suggest", summary="Tự động gợi ý phòng họp tối ưu theo số lượng người tham dự (US #26)")
+def suggest_rooms(
+    attendees: int = Query(..., ge=1, description="Số lượng người tham dự"),
+    start_time: Optional[datetime] = Query(None, description="Thời gian bắt đầu (ISO format)"),
+    end_time: Optional[datetime] = Query(None, description="Thời gian kết thúc (ISO format)"),
+    equipments: Optional[str] = Query(None, description="Thiết bị yêu cầu (phân cách bằng dấu phẩy)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    # 1. Base rooms with capacity >= attendees and status AVAILABLE
+    rooms = db.query(Room).filter(Room.status == "AVAILABLE", Room.capacity >= attendees).all()
+
+    # If no room fits capacity >= attendees, fallback to all available rooms to find closest
+    if not rooms:
+        rooms = db.query(Room).filter(Room.status == "AVAILABLE").all()
+
+    # Parse required equipments
+    req_eq_list = [e.strip().lower() for e in equipments.split(",") if e.strip()] if equipments else []
+
+    # Get user role for restrictions check
+    user_role_name = current_user.role.role_name if current_user.role else ""
+    user_role_id = current_user.role_id
+
+    suggestions = []
+    for r in rooms:
+        # Check restriction for non-admin
+        if user_role_name != "ADMIN" and user_role_id:
+            restr = db.query(RoomRestriction).filter(
+                RoomRestriction.room_id == r.room_id,
+                RoomRestriction.role_id == user_role_id
+            ).first()
+            if restr and not restr.is_allowed:
+                continue # Blocked for this role
+
+        # Check time conflict if start_time and end_time provided
+        has_conflict = False
+        if start_time and end_time:
+            st = start_time.replace(tzinfo=None) if start_time.tzinfo else start_time
+            et = end_time.replace(tzinfo=None) if end_time.tzinfo else end_time
+            
+            conflict = db.query(Meeting).filter(
+                Meeting.room_id == r.room_id,
+                Meeting.status.in_(["SCHEDULED", "IN_PROGRESS", "APPROVED"]),
+                Meeting.start_time < et,
+                Meeting.end_time > st
+            ).first()
+            if conflict:
+                has_conflict = True
+
+        # Calculate capacity score
+        extra_seats = r.capacity - attendees
+        if extra_seats < 0:
+            capacity_score = max(20, 100 + extra_seats * 10)
+        elif extra_seats == 0:
+            capacity_score = 100
+        elif extra_seats <= 5:
+            capacity_score = 95 - (extra_seats * 2)
+        elif extra_seats <= 15:
+            capacity_score = 85 - (extra_seats - 5)
+        elif extra_seats <= 30:
+            capacity_score = 75 - (extra_seats - 15) // 2
+        else:
+            capacity_score = max(40, 65 - (extra_seats - 30) // 3)
+
+        # Equipment score
+        eq_score = 100
+        room_eq_text = (r.equipments or "").lower()
+        if req_eq_list:
+            matched_count = sum(1 for eq in req_eq_list if eq in room_eq_text)
+            eq_score = int((matched_count / len(req_eq_list)) * 100)
+
+        # Conflict penalty
+        if has_conflict:
+            match_score = max(10, int((capacity_score * 0.7 + eq_score * 0.3) * 0.3))
+        else:
+            match_score = int(capacity_score * 0.75 + eq_score * 0.25)
+
+        # Generate reason explanation
+        if has_conflict:
+            reason = "Phòng đang có lịch bận trong khung giờ này"
+        elif extra_seats == 0:
+            reason = "Hoàn hảo: Sức chứa chính xác số lượng người tham dự"
+        elif 0 < extra_seats <= 5:
+            reason = f"Tối ưu nhất: Dư {extra_seats} chỗ dự phòng, vừa vặn không lãng phí diện tích"
+        elif 5 < extra_seats <= 15:
+            reason = f"Rất phù hợp: Dư {extra_seats} chỗ ngồi thoáng đãng"
+        elif extra_seats > 15:
+            reason = f"Phòng rộng: Sức chứa {r.capacity} chỗ (dư {extra_seats} chỗ)"
+        else:
+            reason = f"Thiếu {abs(extra_seats)} chỗ so với số người tham gia"
+
+        if req_eq_list and eq_score == 100:
+            reason += " • Đầy đủ thiết bị yêu cầu"
+
+        suggestions.append({
+            "room_id": r.room_id,
+            "room_name": r.room_name,
+            "capacity": r.capacity,
+            "location": r.location,
+            "status": r.status,
+            "description": r.description,
+            "image_url": r.image_url,
+            "equipments": r.equipments,
+            "match_score_pct": match_score,
+            "extra_seats": extra_seats,
+            "has_conflict": has_conflict,
+            "reason": reason
+        })
+
+    suggestions.sort(key=lambda s: (not s["has_conflict"], s["match_score_pct"]), reverse=True)
+    return suggestions
+
 @router.get("/{room_id}", response_model=RoomOut, summary="Xem chi tiết thông tin phòng họp (US #10)")
 def get_room_detail(
     room_id: int,
@@ -165,6 +277,24 @@ def delete_room(
     if not room:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy phòng họp")
 
+    # Kiểm tra xem có cuộc họp đang hoạt động tại phòng này không
+    active_meeting = db.query(Meeting).filter(
+        Meeting.room_id == room_id,
+        Meeting.status.in_(["SCHEDULED", "APPROVED", "PENDING"])
+    ).first()
+    if active_meeting:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Không thể xóa phòng '{room.room_name}' vì đang có cuộc họp '{active_meeting.title}' xếp lịch tại đây. Vui lòng chuyển hoặc hủy cuộc họp trước."
+        )
+
+    # Gỡ liên kết các thiết bị gắn cố định với phòng này
+    db.query(Equipment).filter(Equipment.room_id == room_id).update({Equipment.room_id: None})
+
+    # Xóa các giới hạn quyền đặt phòng nếu có
+    db.query(RoomRestriction).filter(RoomRestriction.room_id == room_id).delete()
+
+    # Xóa phòng
     db.delete(room)
     db.commit()
     return {"message": f"Đã xóa thành công phòng họp '{room.room_name}'"}
@@ -189,6 +319,18 @@ def get_room_availability(
     ).order_by(Meeting.start_time).all()
     
     return [{"meeting_id": m.meeting_id, "title": m.title, "start_time": m.start_time, "end_time": m.end_time} for m in meetings]
+
+
+@router.get("/{room_id}/restrictions", response_model=List[RoomRestrictionOut], summary="Danh sách giới hạn quyền đặt phòng theo Role (US #21)")
+def get_room_restrictions(
+    room_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_active_user)
+):
+    room = db.query(Room).filter(Room.room_id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy phòng họp")
+    return room.restrictions
 
 
 @router.post("/{room_id}/restrictions", response_model=RoomRestrictionOut, status_code=status.HTTP_201_CREATED, summary="Thêm giới hạn quyền đặt phòng theo Role (US #21 - Chỉ Admin)")

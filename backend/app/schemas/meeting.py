@@ -13,6 +13,7 @@ class MeetingParticipantOut(BaseModel):
     rsvp_status: str
     joined_at: Optional[datetime] = None
     checked_in_at: Optional[datetime] = None
+    checked_out_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -27,6 +28,8 @@ class MeetingCreate(BaseModel):
     passcode: Optional[str] = None
     participant_ids: Optional[List[int]] = []
     equipment_ids: Optional[List[int]] = []
+    recurrence: Optional[str] = "NONE" # NONE, WEEKLY, MONTHLY
+    recurrence_count: Optional[int] = 1
 
 class MeetingUpdate(BaseModel):
     room_id: Optional[int] = None
@@ -59,16 +62,16 @@ class MeetingOut(BaseModel):
     room_id: int
     room: Optional[RoomOut] = None
     title: str
-    description: Optional[str]
+    description: Optional[str] = None
     start_time: datetime
     end_time: datetime
-    meeting_type: str
-    meeting_link: Optional[str]
-    passcode: Optional[str]
+    meeting_type: str = "IN_PERSON"
+    meeting_link: Optional[str] = None
+    passcode: Optional[str] = None
     status: str
-    qr_token: Optional[str]
+    qr_token: Optional[str] = None
     reject_reason: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     participants: List[MeetingParticipantOut] = []
     equipments: List[EquipmentOut] = []
 

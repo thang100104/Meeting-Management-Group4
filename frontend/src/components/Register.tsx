@@ -10,7 +10,7 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [roleName, setRoleName] = useState('student');
+  const [roleName, setRoleName] = useState('user');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -179,11 +179,10 @@ export default function Register() {
               </div>
 
               <div className="form-group">
-                <label>Vai trò</label>
+                <label>Vai trò tài khoản</label>
                 <select className="modern-input" value={roleName} onChange={(e) => setRoleName(e.target.value)} style={{ padding: '0.875rem 1rem', width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                  <option value="student">Sinh viên / Khách tham gia</option>
-                  <option value="lecturer">Giảng viên / Người tổ chức</option>
-                  <option value="admin">Quản trị viên</option>
+                  <option value="user">Người dùng (Tạo &amp; tham gia cuộc họp)</option>
+                  <option value="admin">Quản trị viên (Quản trị hệ thống)</option>
                 </select>
               </div>
               

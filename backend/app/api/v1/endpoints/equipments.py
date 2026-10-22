@@ -32,11 +32,26 @@ def get_equipment_stats(
     portable_count = db.query(Equipment).filter(Equipment.room_id.is_(None)).count()
     in_rooms_count = db.query(Equipment).filter(Equipment.room_id.isnot(None)).count()
 
+    now = datetime.now()
+    active_in_use_eqs = (
+        db.query(MeetingEquipment.equipment_id)
+        .join(Meeting, MeetingEquipment.meeting_id == Meeting.meeting_id)
+        .filter(
+            Meeting.status.in_(["SCHEDULED", "APPROVED", "IN_PROGRESS"]),
+            Meeting.start_time <= now,
+            Meeting.end_time >= now
+        )
+        .distinct()
+        .all()
+    )
+    in_use = len(active_in_use_eqs)
+
     return EquipmentStatsSummary(
         total=total,
         available=available,
         maintenance=maintenance,
         broken=broken,
+        in_use=in_use,
         portable_count=portable_count,
         in_rooms_count=in_rooms_count
     )
