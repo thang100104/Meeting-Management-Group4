@@ -33,6 +33,7 @@
 | 7 | **Long Hoàng Tiến** | Frontend Developer | `feature/sprint3-frontend-components-longhoang` | Phát triển các UI Components chính: TimetableGrid, Quản lý thiết bị, Layout |
 | 8 | **Nguyễn Văn Thái** | Integration Engineer | `feature/sprint3-api-integration-nguyenvanthai` | Tích hợp API Frontend - Backend, Axios Interceptors, Quản lý State AuthContext |
 | 9 | **Vũ Hồng Nhung** | Business Analyst & QA | `feature/sprint1-ba-qa-vuhongnhung` | Phân tích 28 User Stories, viết kịch bản kiểm thử Acceptance Criteria (AC1 - AC6) |
+| 10 | **Nguyễn Thị Hà Phương** | QA & Technical Writer | `feature/sprint4-qa-docs-nguyenthihaphuong` | Kiểm thử tích hợp hệ thống (UAT Testing), xây dựng tài liệu hướng dẫn người dùng & báo cáo nghiệm thu |
 
 ---
 
